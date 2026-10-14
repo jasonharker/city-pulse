@@ -13,7 +13,7 @@ The project is also a deliberate programming exercise: a Go codebase whose compl
 
 ## Scope
 
-**v1:** five structured sources, place and business pages, search, nightly refresh, public exposure.
+**v1:** four structured sources, place and business pages, search, nightly refresh, public exposure.
 
 **Not in v1:**
 - Council/commission agendas (unstructured text — a separate sub-project; Clark County's Legistar Web API is the likely starting point).
@@ -24,22 +24,28 @@ The project is also a deliberate programming exercise: a Go codebase whose compl
 
 ## Data sources (v1)
 
-| Source | Jurisdiction | Access |
-|---|---|---|
-| SNHD restaurant inspections | Southern Nevada (both) | Nightly-refreshed CSV from the SNHD developers page; 2009–present; summaries, not full reports |
-| CLV business licenses | City of Las Vegas | ArcGIS open-data portal, ~214k records since 2013, daily updates |
-| CLV building permits | City of Las Vegas | ArcGIS open-data portal, ~440k records, includes coordinates |
-| Clark County business licenses | Unincorporated Clark County | ArcGIS REST `BusinessLicense/BusinessLicenseData` |
-| Clark County liquor establishments | Unincorporated Clark County | ArcGIS REST `BusinessLicense/LiquorLicenseEstablishments` |
+| Source id | Dataset | Endpoint | Rows (Oct 2026) |
+|---|---|---|---|
+| `snhd` | SNHD restaurant inspections | `https://www.southernnevadahealthdistrict.org/restaurants/download/restaurants.zip` (refreshed nightly) | 35,904 establishments; 127,627 current + 204,179 legacy inspections |
+| `ccbiz` | Clark County business licenses | `https://maps.clarkcountynv.gov/arcgis/rest/services/BusinessLicense/BusinessLicenseData/FeatureServer/1` | 90,019 |
+| `clvlicense` | City of LV business licenses | `https://services1.arcgis.com/F1v0ufATbBQScMtY/arcgis/rest/services/Business_Licenses_OpenData/FeatureServer/0` | 214,049 |
+| `clvpermit` | City of LV building permits | current: `…/OpenData_Building_Permits_/FeatureServer/0`; archive: `…/Bldg_Permits/FeatureServer/379` (same `services1` org) | 26,000 current; 1,807,326 archive |
 
 The Strip is unincorporated Clark County; downtown is City of Las Vegas. Two jurisdictions publish overlapping data in different shapes, which makes entity resolution a v1 problem.
 
-**Verify per source at implementation time (not assumed here):** exact download URL, ArcGIS max page size, which field supports incremental `since` filtering, whether the SNHD CSV carries coordinates, and the source's terms of use.
+**Verified source facts (2026-10-14) that shape the code:**
+- No v1 source has a usable last-edited field, so **every run is a full snapshot**. Watermarks and incremental fetch are dropped from v1.
+- ArcGIS geometry is projected (Nevada State Plane); queries request `outSR=4326`. Page sizes: Clark County 10,000, CLV 1,000/2,000. Paging is keyset on the object-id field, not offsets. Object ids are not stable identities and are excluded from payloads.
+- `ccbiz`: credential numbers are unique (`1001277.LIQ-107`); the part before the `.` is shared by all of one business's licenses. Dates are `YYYYMMDD`. Has parcel numbers and geometry; some rows are out-of-state mailing addresses.
+- Clark County's separate liquor layer is dropped: 504 of its 518 license numbers are already in `ccbiz`.
+- `clvlicense`: no geometry, no issue date. Its timeline events are dated by when city-pulse first saw them. One row per owner/officer, so 214,049 rows fold into 149,601 license records with an `owners` list; 101 rows have no license number.
+- `clvpermit`: the archive layer stops in January 2026; current permits are the separate layer. Same `APNO` namespace — current wins on overlap. Archive dates are `DD-MON-YY`; current dates are epoch milliseconds. Both carry parcel ids (`PRCLID`). Archive rows with empty `APNO` (~72k) are blank and skipped by query. The archive repeats identical rows up to 24× (content hashing collapses them) and holds several lifecycle snapshots of one permit (`Accepted` → `Issued` → `Closed`): 1,807,596 rows → 534,185 versions of 426,701 permits. Ingest keeps every distinct version; resolve picks the most advanced one per permit.
+- `snhd`: semicolon-separated with a trailing `;`, not RFC CSV — quotes are literal data. 54 establishment names contain bare `;` (mirrored in the trailing `search_text` column), repairable when the extra field count is even. The `latitude` column holds longitude and vice versa. Inspections from March 2017 to September 2020 are missing from the published data. 342 inspected permits have no establishment row.
 
 ## Domain model
 
 - **Source** — one connector per dataset: fetch, detect new/changed rows, map a raw row to an observation.
-- **Observation** — one immutable source record: source, source record id, content hash, raw payload (JSONB), plus parsed fields: name, address string, coordinates if present, event date, event type (`license.issued`, `license.closed`, `inspection`, `permit.issued`, …).
+- **Observation** — one immutable version of a source record: source, source record id, content hash, raw payload (JSONB), plus parsed fields: kind (`license`, `inspection`, `permit`), name, street address as published, city, zip, parcel number, business key (a source-scoped id naming one operator across records), category, status, coordinates if present, start date and end date.
 - **Address** — normalized canonical form (number, street, unit, city) and a point.
 - **Place** — a physical location: one canonical address and point. Hosts many businesses over time.
 - **Business** — a named operator at a place over a time span. "Joe's Bar LLC" and "JOES BAR" resolve to one business.
@@ -54,12 +60,12 @@ One Go module, one binary, subcommands `ingest`, `resolve`, `serve`, `nightly` (
 ```
 cmd/citypulse/            main: subcommand dispatch
 internal/source/          Source interface + registry
-  arcgis/                 shared ArcGIS FeatureServer client (paging, since-filter)
-  snhd/                   SNHD inspections (CSV)
+  arcgis/                 shared ArcGIS FeatureServer client (keyset paging)
+  snhd/                   SNHD inspections (zip of semicolon files)
   clvlicense/             City of LV business licenses
-  clvpermit/              City of LV building permits
+  clvpermit/              City of LV building permits (current + archive)
   ccbiz/                  Clark County business licenses
-  ccliquor/               Clark County liquor establishments
+internal/ingest/          runs sources, batches upserts, records runs and errors
 internal/address/         parse + normalize street addresses
 internal/resolve/         blocking, name matching, clustering, business spans
 internal/store/           Postgres via pgx, embedded SQL migrations
@@ -67,7 +73,7 @@ internal/web/             HTTP server, html/template, search, place/business pag
 ```
 
 **Interfaces**
-- `Source`: `Name() string`, `Fetch(ctx, since)` → stream of raw records, `Parse(raw) (Observation, error)`.
+- `Source`: `Name() string`, `Fetch(ctx, emit func(Record) error) error` (full snapshot), `Parse(Record) (Observation, error)`.
 - `address.Normalize(string) (Address, error)` — pure, no I/O.
 - `resolve` reads observations, writes places/businesses/links; shares nothing with `web` except the store.
 
@@ -79,10 +85,11 @@ internal/web/             HTTP server, html/template, search, place/business pag
 ## Data flow
 
 ### Ingest (nightly)
-1. Each source has a watermark (last successful fetch) in `source_runs`.
-2. Fetch incrementally since the watermark where the source supports it. The Sunday run (and every run for a source with no usable incremental field) does a full snapshot instead, to catch edits and deletions incremental fetches miss.
-3. Upsert keyed on `(source, source_record_id, content_hash)`: same hash → no-op; new hash → new version of the record (change detection); a record absent from a full snapshot → marked `withdrawn`, never deleted.
-4. Sources fail independently; a failed source records its error and keeps its old watermark.
+1. Each source run is a row in `source_runs` (rows seen, new versions, parse errors, error text).
+2. Every run fetches a full snapshot.
+3. Each batch is `COPY`'d into a session temp table, then inserted keyed on `(source, record_id, hash)` with `ON CONFLICT DO NOTHING`: same hash → no write at all; new hash → new version of the record (change detection). Seen keys collect in a second temp table; after a successful fetch, records the run did not see → marked `withdrawn`, never deleted. Unchanged rows are never rewritten, so a nightly full snapshot does not bloat the table.
+4. Withdrawal guard: if a run sees fewer than half the rows of the source's last successful run, withdrawal is skipped and the run is marked failed — an upstream outage that returns an empty layer must not withdraw everything.
+5. Sources fail independently.
 
 ### Resolve (after ingest; full deterministic rebuild)
 1. **Normalize** — address key (number + street + unit); name: lowercase, strip legal suffixes (LLC, INC, CORP, …), split `dba`, `&` → `and`, drop punctuation.
@@ -110,7 +117,7 @@ Reads only the swapped-in tables: name/address search (`pg_trgm`), place pages (
 - One source failing never blocks the others.
 - Parse failures keep the raw row and write to `parse_errors`; nothing is silently dropped. Per-source parse-error rate is a metric, so an upstream format change shows up as a spike.
 - Resolve failure → no swap; the site serves the previous tables.
-- Prometheus metrics per source: rows fetched, new versions, parse failures, last success time. One alert: any source without a success in 3 days → existing AlertManager → Discord.
+- Prometheus metrics per source: rows fetched, new versions, parse failures, last success time. A CronJob can't be scraped, so `serve` exposes these on `/metrics` by reading `source_runs`. One alert: any source without a success in 3 days → existing AlertManager → Discord.
 
 ## Testing
 
@@ -128,3 +135,12 @@ Reads only the swapped-in tables: name/address search (`pg_trgm`), place pages (
 - Clark County BusinessLicense services: https://maps.clarkcountynv.gov/arcgis/rest/services/BusinessLicense
 - Clark County Legistar: https://clark.legistar.com/
 - NV SOS bulk data status: https://www.nvsos.gov/sosservices/AnonymousAccess/HelpGuides/DataDownloadUserGuide.aspx
+
+## Build sequence
+
+One implementation plan per subsystem, each ending in working, tested software:
+
+1. **Ingest** — module skeleton, store and migrations, ArcGIS client, the four sources, `citypulse migrate` / `citypulse ingest`. Done when a live run fills `observations` from all four sources.
+2. **Resolve** — `address` package and golden corpus, name normalization, place/business clustering, table swap, `citypulse resolve` / `nightly`.
+3. **Serve** — search, place and business pages, map, `/metrics`.
+4. **Deploy** — THALES manifests via `/thales-deploy`, Jenkins pipeline, public exposure.
