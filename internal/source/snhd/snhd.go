@@ -12,6 +12,9 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/charmap"
 
 	"github.com/jasonharker/city-pulse/internal/source"
 )
@@ -128,6 +131,12 @@ func eachRow(zr *zip.Reader, name string, fn func(header, cols []string, line st
 	var header []string
 	for sc.Scan() {
 		line := strings.TrimRight(sc.Text(), "\r")
+		if !utf8.ValidString(line) {
+			// A few names are Windows-1252 ("Bam\x92s Sandwiches"); the rest is UTF-8.
+			if s, err := charmap.Windows1252.NewDecoder().String(line); err == nil {
+				line = s
+			}
+		}
 		if line == "" {
 			continue
 		}

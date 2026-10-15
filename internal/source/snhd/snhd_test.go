@@ -15,11 +15,12 @@ import (
 const estHeader = "permit_number;facility_id;owner_id;PE;restaurant_name;location_name;address;latitude;longitude;city_id;city_name;zip_code;nciaa;plan_review;record_status;current_grade;current_demerits;date_current;previous_grade;date_previous;search_text;"
 
 // Real lines from the district's file: a normal row (coordinates swapped, as
-// published), a name containing ';', and an unrepairable row.
+// published; its apostrophe in Windows-1252, as a few lines are), a name
+// containing ';', and an unrepairable row.
 var files = map[string]string{
 	"restaurant_inspection_types.csv": "inspection_type_id;inspection_type;\n916;Routine Inspection;\n",
 	"restaurant_establishments.csv": estHeader + "\n" +
-		"PR0000002;FA0002677;;1006;McDonald's #3549 D HOTEL;McDonalds (Store #3549) @ D HOTEL;301 Fremont ST;-115.14308440;36.16939030;10;Las Vegas;89101-5600;Y;;02;A;9;2024-07-16 00:00:00;A;2023-02-21 00:00:00;McDonald's #3549 D HOTEL McDonalds (Store #3549) @ D HOTEL;\n" +
+		"PR0000002;FA0002677;;1006;McDonald\x92s #3549 D HOTEL;McDonalds (Store #3549) @ D HOTEL;301 Fremont ST;-115.14308440;36.16939030;10;Las Vegas;89101-5600;Y;;02;A;9;2024-07-16 00:00:00;A;2023-02-21 00:00:00;McDonald's #3549 D HOTEL McDonalds (Store #3549) @ D HOTEL;\n" +
 		"PR0114877;FA0077379;;1122;PANCHO DOG'S-DELETE;NONPAYMENT OF FEES 4/13/26 NBS;PANCHO DOG'S;3757 E Lake Mead BLVD;-115.09251300;36.19541790;10;Las Vegas;89115;Y;;02;;;;;;PANCHO DOG'S-DELETE;NONPAYMENT OF FEES 4/13/26 NBS PANCHO DOG'S;\n" +
 		"PR0134961;FA0092178;;1009;ASTAS NUTRITION SPOT;ASTAS NUTRITION SPOT;4161 S EASTERN AVE #A-3;-115.11932000;36.11324000;-1;;AS VEGAS;89119;Y;;01;A;3;2025-02-26 00:00:00;A;2024-01-19 00:00:00;ASTAS NUTRITION SPOT ASTAS NUTRITION SPOT;\n",
 	"restaurant_inspections.csv": "serial_number;permit_number;facility_id;owner_id;inspection_date;inspection_time;employee_id;inspection_type_id;inspection_demerits;inspection_grade;inspection_grade_new;permit_status;inspection_result;violations;record_updated;\n" +
@@ -74,7 +75,7 @@ func TestParseJoinsEstablishmentAndRepairsCoordinates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if obs.Kind != "inspection" || obs.Name != "McDonald's #3549 D HOTEL" || obs.Address != "301 Fremont ST" ||
+	if obs.Kind != "inspection" || obs.Name != "McDonald’s #3549 D HOTEL" || obs.Address != "301 Fremont ST" ||
 		obs.City != "Las Vegas" || obs.Zip != "89101" || obs.BusinessKey != "snhd:PR0000002" ||
 		obs.Category != "Routine Inspection" || obs.Status != `"A" Grade` {
 		t.Errorf("obs = %+v", obs)
