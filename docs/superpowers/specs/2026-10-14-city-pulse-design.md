@@ -49,7 +49,7 @@ The Strip is unincorporated Clark County; downtown is City of Las Vegas. Two jur
 - **Address** — normalized canonical form (number, street, unit, city) and a point.
 - **Place** — a physical location: one canonical address and point. Hosts many businesses over time.
 - **Business** — a named operator at a place over a time span. "Joe's Bar LLC" and "JOES BAR" resolve to one business.
-- **Link** — observation → business/place, with confidence and the rule that produced it. Rebuilt on every resolve run.
+- **Link** — observation → business/place, with the rule that produced each (`exact`, `dir`, `near`; `key`, `name`, `prefix`); the rule is the confidence. Rebuilt on every resolve run.
 
 Places and businesses are derived, never hand-edited. Improving the matcher means re-running resolve, not migrating data.
 
@@ -92,12 +92,14 @@ internal/web/             HTTP server, html/template, search, place/business pag
 5. Sources fail independently.
 
 ### Resolve (after ingest; full deterministic rebuild)
-1. **Normalize** — address key (number + street + unit); name: lowercase, strip legal suffixes (LLC, INC, CORP, …), split `dba`, `&` → `and`, drop punctuation.
-2. **Places** — group observations by address key. A unit-less record at an address with exactly one unit attaches to that unit with lower confidence. Unparseable address with coordinates → nearest place within a small radius.
-3. **Businesses** — within a place: shared identifiers (license numbers) merge outright; otherwise name similarity (Jaro-Winkler or token-set over a threshold), clustered with union-find. The metric and threshold are chosen by measuring against the `resolve` fixture datasets, not fixed in advance. Each business gets an active span from first to last observation, closed early by a "closed" license status.
-4. **Write** — build fresh `places`, `businesses`, `links` tables, swap in one transaction. The site never sees a partial state.
+Input is the **current version** of every source record: the one from the latest run, and among versions first seen in the same run (the permit archive's lifecycle snapshots) the most advanced status. Older versions stay in `observations`.
 
-Full rebuild is expected to take minutes at ~1M observations. Incremental resolution is the upgrade path if it doesn't; not built until needed.
+1. **Normalize** — address key `number|dir|street|unit`, street type left out because agencies omit it as often as they publish it. Name: lowercase, strip legal suffixes (LLC, INC, CORP, …) and SNHD's `- DELETED`, a `dba` name wins, `&` → `and`, drop punctuation.
+2. **Places** — group observations by address key. A missing direction is filled when exactly one is seen at that number and street. A missing unit is never guessed: a unit-less record belongs to the whole building, whose units share its key as a prefix (measured: guessing pulled whole buildings into junk units). Unparseable address with coordinates → nearest place within 60 m.
+3. **Businesses** — within a place, union-find over: a shared source business key; names equal ignoring spacing or word order (`SPORTSBAR`/`SPORTS BAR`, 156 such pairs); one name a whole-word prefix of another, shorter name ≥ 5 characters (`SUBWAY`/`SUBWAY #27601`, SNHD's per-station permits; ~4,100 pairs). Records with no address cluster by business key alone. Each business spans its first to last observation; it is closed when every record carries a closed status or an end date.
+4. **Write** — `TRUNCATE` and `COPY` `places`, `businesses`, `links` in one transaction. The site never sees a partial state. IDs are derived from content (place ID = address key; business ID = place ID + smallest business key), so URLs survive rebuilds.
+
+A full rebuild takes about a minute at ~1M current records. Incremental resolution is the upgrade path if it stops being enough; not built until needed. PostGIS is not needed for resolve (the 60 m lookup is an in-memory grid); it arrives with serve if the map needs it.
 
 A manual overrides table (force-merge / force-split pins, applied last) is added once real mismatches appear on the public site, not before.
 
