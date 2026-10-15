@@ -26,7 +26,10 @@ func TestNormalize(t *testing.T) {
 		// clvlicense
 		{"515 S 3rd St 110", "515|S|3RD|110", "ST"},
 		{"917 Fremont St 927 Fremont St", "917||FREMONT|", "ST"},
-		{"2411 W Sahara Ave PALACE STATION (KIOSK)", "2411|W|SAHARA|PALACESTATION", "AVE"},
+		{"2411 W Sahara Ave PALACE STATION (KIOSK)", "2411|W|SAHARA|", "AVE"},
+		{"1600 N Decatur BLVD OUTSIDE OF 7-ELEVEN", "1600|N|DECATUR|", "BLVD"},
+		{"300 E 2nd Street 15th Floor", "300|E|2ND|", "ST"},
+		{"2477 E TROPICANA AVE B/C", "2477|E|TROPICANA|B/C", "AVE"},
 		{"875 S Grand Central Pkwy Kiosk C2 (by Tommy Hilfiger)", "875|S|GRAND CENTRAL|C2", "PKWY"},
 		{"401 Ryland St Ste 0200A", "401||RYLAND|200A", "ST"},
 		// clvpermit

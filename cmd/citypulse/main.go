@@ -2,6 +2,8 @@
 //
 //	citypulse migrate
 //	citypulse ingest [-only snhd,ccbiz]
+//	citypulse resolve
+//	citypulse nightly    (ingest, then resolve even if a source failed)
 //
 // DATABASE_URL must be a postgres:// URL.
 package main
@@ -21,6 +23,7 @@ import (
 	"time"
 
 	"github.com/jasonharker/city-pulse/internal/ingest"
+	"github.com/jasonharker/city-pulse/internal/resolve"
 	"github.com/jasonharker/city-pulse/internal/source"
 	"github.com/jasonharker/city-pulse/internal/source/ccbiz"
 	"github.com/jasonharker/city-pulse/internal/source/clvlicense"
@@ -32,7 +35,7 @@ import (
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: citypulse migrate | ingest [-only a,b]")
+		fmt.Fprintln(os.Stderr, "usage: citypulse migrate | ingest [-only a,b] | resolve | nightly")
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -44,6 +47,11 @@ func main() {
 		err = withStore(ctx, func(st *store.Store) error { return nil })
 	case "ingest":
 		err = runIngest(ctx, os.Args[2:], log)
+	case "resolve":
+		err = withStore(ctx, func(st *store.Store) error { return runResolve(ctx, st, log) })
+	case "nightly":
+		err = errors.Join(runIngest(ctx, nil, log),
+			withStore(ctx, func(st *store.Store) error { return runResolve(ctx, st, log) }))
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -87,4 +95,19 @@ func runIngest(ctx context.Context, args []string, log *slog.Logger) error {
 		}
 	}
 	return withStore(ctx, func(st *store.Store) error { return ingest.Run(ctx, st, sources, log) })
+}
+
+func runResolve(ctx context.Context, st *store.Store, log *slog.Logger) error {
+	start := time.Now()
+	obs, err := st.CurrentObservations(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve: load: %w", err)
+	}
+	r := resolve.Build(obs)
+	if err := st.ReplaceResolved(ctx, r); err != nil {
+		return fmt.Errorf("resolve: write: %w", err)
+	}
+	log.Info("resolve", "observations", len(obs), "places", len(r.Places),
+		"businesses", len(r.Businesses), "took", time.Since(start).Round(time.Second))
+	return nil
 }

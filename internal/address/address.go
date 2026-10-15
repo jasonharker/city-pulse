@@ -113,8 +113,9 @@ func Normalize(s string) (Address, error) {
 			a.Dir = d
 			tail = tail[1:]
 		}
-		// A tail with its own street type is a second address ("917 FREMONT ST 927 FREMONT ST"): drop it.
-		if len(tail) > 0 && !slices.ContainsFunc(tail, func(s string) bool { _, ok := types[s]; return ok }) {
+		// Only a tail that looks like a unit is one. Prose ("OUTSIDE OF 7-ELEVEN",
+		// "10TH FLOOR") and second addresses ("917 FREMONT ST 927 FREMONT ST") are dropped.
+		if len(tail) > 0 && !slices.ContainsFunc(tail, notUnit) {
 			a.Unit = unit(tail)
 		}
 		a.Type, rest = t, rest[:i]
@@ -149,6 +150,16 @@ func Normalize(s string) (Address, error) {
 		a.Street = v
 	}
 	return a, nil
+}
+
+// notUnit reports whether a bare token after the street type can't be part of a unit.
+// Units are "S114", "-117", "A", "&", "B/C"; words are not.
+func notUnit(t string) bool {
+	if hasDigit.MatchString(t) {
+		return false
+	}
+	return slices.ContainsFunc(strings.FieldsFunc(t, func(r rune) bool { return r == '&' || r == '/' || r == '-' }),
+		func(p string) bool { return len(p) > 2 })
 }
 
 func first(toks []string) string {
