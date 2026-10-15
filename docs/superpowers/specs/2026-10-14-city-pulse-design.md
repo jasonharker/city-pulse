@@ -104,7 +104,14 @@ A full rebuild takes about a minute at ~1M current records. Incremental resoluti
 A manual overrides table (force-merge / force-split pins, applied last) is added once real mismatches appear on the public site, not before.
 
 ### Serve
-Reads only the swapped-in tables: name/address search (`pg_trgm`), place pages (timeline + map), business pages.
+Reads only the swapped-in tables. `citypulse serve [-addr :8080]`; one embedded `html/template` page, no JavaScript.
+- **Search** — a query that parses as an address matches every unit at that number and street (prefix match on the place key, any direction if omitted); every query also matches business names as substrings of a punctuation-free `search` column (`joes` finds `JOE'S BAR`), ranked by `pg_trgm` similarity. 50 results each.
+- **Place page** — map (OpenStreetMap embed iframe; no tile JS), businesses here with spans, the building it is a unit of or the units it contains, and the newest 300 records.
+- **Business page** — span, place, newest 300 records.
+- `Cache-Control: public, max-age=3600` (data changes nightly); strict CSP (`default-src 'none'`, only the OSM frame allowed); 5 s query timeouts.
+- `/metrics` (per-source last success, last run ok, rows seen/new, parse errors) and `/healthz` (database ping).
+
+Measured on the full data: search 5–12 ms, the busiest place page (3,660 records) 65 ms.
 
 ## Deployment (THALES)
 

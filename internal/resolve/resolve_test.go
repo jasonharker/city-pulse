@@ -23,6 +23,7 @@ func TestBuild(t *testing.T) {
 		// Name variants at one place: a station permit, and reordered words.
 		{ID: 11, Name: "OAK DENTAL - CLEANING ROOM", Address: "500 W OAK AVE STE 7", BusinessKey: "snhd:8", Date: y(2016)},
 		{ID: 12, Name: "Dental, Oak", Address: "500 W OAK AVE STE 7", BusinessKey: "snhd:9", Date: y(2017)},
+		{ID: 13, Name: "Oak Dentals #2", Address: "500 W OAK AVE STE 7", BusinessKey: "cc:4", Date: y(2018)},
 		// No usable address: coordinates near the bar, or nothing at all.
 		{ID: 9, Name: "BAR CART", Address: "", BusinessKey: "snhd:4", Date: y(2022), Lat: ll(36.1002), Lon: ll(-115.17)},
 		{ID: 10, Name: "HOME BIZ", Address: "", BusinessKey: "clv:5", Date: y(2020)},
@@ -37,12 +38,13 @@ func TestBuild(t *testing.T) {
 		4:  {4, bar, RuleExact, bar + "#snhd:2", RuleKey},
 		5:  {5, "3570|S|LAS VEGAS|200", RuleExact, "3570|S|LAS VEGAS|200#snhd:3", RuleKey},
 		6:  {6, "3570|S|LAS VEGAS|200", RuleDir, "", ""},
-		7:  {7, "500|W|OAK|7", RuleExact, "500|W|OAK|7#clv:1", RuleKey},
+		7:  {7, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleKey},
 		8:  {8, "500|W|OAK|", RuleExact, "", ""},
 		9:  {9, bar, RuleNear, bar + "#snhd:4", RuleKey},
 		10: {10, "", "", "#clv:5", RuleKey},
-		11: {11, "500|W|OAK|7", RuleExact, "500|W|OAK|7#clv:1", RulePrefix},
-		12: {12, "500|W|OAK|7", RuleExact, "500|W|OAK|7#clv:1", RuleName},
+		11: {11, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RulePrefix},
+		12: {12, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleName},
+		13: {13, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleName},
 	}
 	for _, l := range r.Links {
 		if l != want[l.ObservationID] {

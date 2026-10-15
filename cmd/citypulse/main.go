@@ -3,6 +3,7 @@
 //	citypulse migrate
 //	citypulse ingest [-only snhd,ccbiz]
 //	citypulse resolve
+//	citypulse serve [-addr :8080]
 //	citypulse nightly    (ingest, then resolve even if a source failed)
 //
 // DATABASE_URL must be a postgres:// URL.
@@ -30,12 +31,13 @@ import (
 	"github.com/jasonharker/city-pulse/internal/source/clvpermit"
 	"github.com/jasonharker/city-pulse/internal/source/snhd"
 	"github.com/jasonharker/city-pulse/internal/store"
+	"github.com/jasonharker/city-pulse/internal/web"
 )
 
 func main() {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: citypulse migrate | ingest [-only a,b] | resolve | nightly")
+		fmt.Fprintln(os.Stderr, "usage: citypulse migrate | ingest [-only a,b] | resolve | serve [-addr :8080] | nightly")
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -49,6 +51,8 @@ func main() {
 		err = runIngest(ctx, os.Args[2:], log)
 	case "resolve":
 		err = withStore(ctx, func(st *store.Store) error { return runResolve(ctx, st, log) })
+	case "serve":
+		err = runServe(ctx, os.Args[2:], log)
 	case "nightly":
 		err = errors.Join(runIngest(ctx, nil, log),
 			withStore(ctx, func(st *store.Store) error { return runResolve(ctx, st, log) }))
@@ -95,6 +99,30 @@ func runIngest(ctx context.Context, args []string, log *slog.Logger) error {
 		}
 	}
 	return withStore(ctx, func(st *store.Store) error { return ingest.Run(ctx, st, sources, log) })
+}
+
+func runServe(ctx context.Context, args []string, log *slog.Logger) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	addr := fs.String("addr", ":8080", "listen address")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	return withStore(ctx, func(st *store.Store) error {
+		srv := &http.Server{Addr: *addr, Handler: web.Handler(st, log),
+			ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,
+			WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+		go func() {
+			<-ctx.Done()
+			shut, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+			defer cancel()
+			srv.Shutdown(shut)
+		}()
+		log.Info("serve", "addr", *addr)
+		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
 }
 
 func runResolve(ctx context.Context, st *store.Store, log *slog.Logger) error {

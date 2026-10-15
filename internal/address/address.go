@@ -131,8 +131,8 @@ func Normalize(s string) (Address, error) {
 			break
 		}
 	}
-	if n := len(rest); n > 1 && a.Type == "" {
-		if d, ok := dirs[rest[n-1]]; ok && a.Dir == "" { // "LAS VEGAS SOUTH"
+	if n := len(rest); n > 1 {
+		if d, ok := dirs[rest[n-1]]; ok && a.Dir == "" { // "LAS VEGAS SOUTH", "LAS VEGAS S BLVD"
 			a.Dir = d
 			rest = rest[:n-1]
 		}

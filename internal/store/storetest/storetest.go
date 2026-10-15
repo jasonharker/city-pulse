@@ -42,7 +42,7 @@ func New(t *testing.T) (*store.Store, *pgx.Conn) {
 		t.Fatal(err)
 	}
 	q := u.Query()
-	q.Set("search_path", schema)
+	q.Set("search_path", schema+",public") // public holds extensions (pg_trgm)
 	u.RawQuery = q.Encode()
 	st, err := store.Open(ctx, u.String())
 	if err != nil {

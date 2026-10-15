@@ -52,7 +52,7 @@ func (s *Store) ReplaceResolved(ctx context.Context, r resolve.Result) error {
 	}
 	biz := make([][]any, len(r.Businesses))
 	for i, b := range r.Businesses {
-		biz[i] = []any{b.ID, nullable(b.PlaceID), b.Name, b.First, b.Last, b.Closed}
+		biz[i] = []any{b.ID, nullable(b.PlaceID), b.Name, b.First, b.Last, b.Closed, SearchText(b.Name)}
 	}
 	links := make([][]any, len(r.Links))
 	for i, l := range r.Links {
@@ -64,7 +64,7 @@ func (s *Store) ReplaceResolved(ctx context.Context, r resolve.Result) error {
 		rows  [][]any
 	}{
 		{"places", []string{"id", "address", "lat", "lon"}, places},
-		{"businesses", []string{"id", "place_id", "name", "first_date", "last_date", "closed"}, biz},
+		{"businesses", []string{"id", "place_id", "name", "first_date", "last_date", "closed", "search"}, biz},
 		{"links", []string{"observation_id", "place_id", "place_rule", "business_id", "business_rule"}, links},
 	} {
 		if _, err := tx.CopyFrom(ctx, pgx.Identifier{c.table}, c.cols, pgx.CopyFromRows(c.rows)); err != nil {

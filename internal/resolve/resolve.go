@@ -196,8 +196,7 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 		}
 		toks := strings.Fields(nm)
 		join(placeOf[i]+"|name|"+strings.Join(toks, ""), i, RuleName)
-		slices.Sort(toks)
-		join(placeOf[i]+"|words|"+strings.Join(toks, " "), i, RuleName)
+		join(placeOf[i]+"|words|"+wordsKey(toks), i, RuleName)
 		namesAt[placeOf[i]] = append(namesAt[placeOf[i]], named{nm, i})
 	}
 	// In sorted order every name that extends "subway " follows "subway" directly.
@@ -249,6 +248,8 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 		}
 		b.Name = mostCommon(names)
 		slices.Sort(keys)
+		// ponytail: a record with a smaller key joining later changes the ID (and URL);
+		// keep a redirect table of old IDs if that starts breaking links people share.
 		b.ID = place + "#" + first(keys, "obs:"+strconv.FormatInt(obs[ms[0]].ID, 10))
 		out = append(out, b)
 		for _, i := range ms {
@@ -260,6 +261,23 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 	}
 	slices.SortFunc(out, func(a, b Business) int { return cmp.Compare(a.ID, b.ID) })
 	return bizOf, bizRule, out
+}
+
+// wordsKey is a name's words in sorted order, without store numbers or a plural
+// "s": "In N Out Burgers" and "IN-N-OUT BURGER #88" match.
+func wordsKey(toks []string) string {
+	var ws []string
+	for _, t := range toks {
+		if strings.Trim(t, "0123456789") == "" {
+			continue
+		}
+		if len(t) > 3 {
+			t = strings.TrimSuffix(t, "s")
+		}
+		ws = append(ws, t)
+	}
+	slices.Sort(ws)
+	return strings.Join(ws, " ")
 }
 
 func first(s []string, fallback string) string {

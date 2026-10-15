@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a64; --line: #e3e0d8; --accent: #b4441f; --chip: #f0ede5; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #161614; --fg: #ecebe6; --muted: #a09e96; --line: #33322e; --accent: #f08a5d; --chip: #23221f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--accent); }
+header, main, footer { max-width: 60rem; margin: 0 auto; padding: 1rem; }
+header { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: center; border-bottom: 1px solid var(--line); }
+header .brand { font-weight: 700; color: var(--fg); text-decoration: none; letter-spacing: -.01em; }
+form { display: flex; flex: 1 1 18rem; gap: .5rem; }
+input[type=search] { flex: 1; min-width: 0; padding: .5rem .75rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: .4rem; }
+button { padding: .5rem 1rem; font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: .4rem; cursor: pointer; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 1rem 0 .25rem; letter-spacing: -.01em; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
+.muted { color: var(--muted); }
+ul.plain { list-style: none; padding: 0; margin: 0; }
+ul.plain li { padding: .6rem 0; border-bottom: 1px solid var(--line); }
+.chip { display: inline-block; font-size: .8rem; padding: 0 .45rem; border-radius: .3rem; background: var(--chip); color: var(--muted); }
+.timeline li { display: grid; grid-template-columns: 7.5rem 1fr; gap: .25rem 1rem; }
+.timeline time { color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 34rem) { .timeline li { grid-template-columns: 1fr; } }
+iframe { width: 100%; height: 16rem; border: 1px solid var(--line); border-radius: .4rem; margin-top: 1rem; }
+footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); margin-top: 3rem; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">city-pulse</a>
+  <form action="/" method="get" role="search">
+    <input id="q" type="search" name="q" value="{{.Query}}" placeholder="An address or a business name" aria-label="An address or a business name">
+    <button type="submit">Search</button>
+  </form>
+</header>
+<main>
+{{- if .Place}}{{template "place" .Place}}
+{{- else if .Business}}{{template "business" .Business}}
+{{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
+{{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
+{{- else if .Searched}}{{template "results" .}}
+{{- else}}
+  <h1>What used to be here?</h1>
+  <p class="muted">Every Las Vegas business license, health inspection and building permit the city, the county and the
+  Southern Nevada Health District publish, merged into one history per address. Search an address to see who has
+  occupied it, or a business to see where it has been.</p>
+{{- end}}
+</main>
+<footer>
+  Built nightly from public records: Southern Nevada Health District inspections, Clark County and City of Las Vegas
+  business licenses, City of Las Vegas building permits. Matching is automatic and can be wrong; the linked records are as
+  published. Map data © OpenStreetMap contributors.
+</footer>
+</body>
+</html>
+
+{{define "results"}}
+  <h1>Results for “{{.Query}}”</h1>
+  {{- if not .Hits}}<p class="muted">Nothing matched. Addresses work best as “3570 S Las Vegas Blvd”; names can be partial.</p>{{end}}
+  <ul class="plain">
+  {{- range .Hits}}
+    <li>{{if eq .Kind "place"}}<a href="{{placeURL .ID}}">{{.Title}}</a> <span class="chip">place</span>
+      {{- else}}<a href="{{businessURL .ID}}">{{.Title}}</a> <span class="chip">{{year .Since}}–{{year .Until}}</span>
+      {{- with .Sub}}<br><span class="muted">{{.}}</span>{{end}}{{end}}</li>
+  {{- end}}
+  </ul>
+{{end}}
+
+{{define "place"}}
+  <h1>{{.Address}}</h1>
+  {{- with .Building}}<p class="muted">A unit of <a href="{{placeURL .ID}}">{{.Address}}</a></p>{{end}}
+  {{- if .Lat}}<iframe title="Map of {{.Address}}" loading="lazy" referrerpolicy="no-referrer" src="{{mapURL (deref .Lat) (deref .Lon)}}"></iframe>{{end}}
+  {{- if .Businesses}}
+  <h2>Businesses here</h2>
+  <ul class="plain">
+  {{- range .Businesses}}
+    <li><a href="{{businessURL .ID}}">{{.Name}}</a> <span class="chip">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}}</span></li>
+  {{- end}}
+  </ul>
+  {{- end}}
+  {{- if .Units}}
+  <h2>Units in this building</h2>
+  <ul class="plain">{{range .Units}}<li><a href="{{placeURL .ID}}">{{.Address}}</a></li>{{end}}</ul>
+  {{- end}}
+  {{template "events" .}}
+{{end}}
+
+{{define "business"}}
+  <h1>{{.Name}}</h1>
+  <p class="muted">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}} ·
+  {{with .Place}}<a href="{{placeURL .ID}}">{{.Address}}</a>{{else}}no published address{{end}}</p>
+  {{template "events" .}}
+{{end}}
+
+{{define "events"}}
+  <h2>Records{{if gt .Total (len .Events)}} <span class="muted">(newest {{len .Events}} of {{.Total}})</span>{{end}}</h2>
+  <ul class="plain timeline">
+  {{- range .Events}}
+    <li><time>{{day .Date}}</time>
+      <div>{{source .Source}}{{with .Name}} · {{.}}{{end}}
+        {{- if .Category}}<br><span class="muted">{{.Category}}{{with .Status}} · {{.}}{{end}}</span>{{else}}{{with .Status}}<br><span class="muted">{{.}}</span>{{end}}{{end}}
+        {{- if .BusinessID}}<br><a href="{{businessURL .BusinessID}}">business</a>{{end}}
+        {{- if .PlaceID}} · <a href="{{placeURL .PlaceID}}">place</a>{{end}}</div></li>
+  {{- end}}
+  </ul>
+{{end}}
