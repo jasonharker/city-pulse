@@ -3,110 +3,325 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>{{.Title}}</title>
+<link rel="icon" href="{{static "icon.svg"}}" type="image/svg+xml">
+<link rel="preload" href="{{static "newsreader.woff2"}}" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{static "leaflet.css"}}">
+<script defer src="{{static "leaflet.js"}}"></script>
+<script defer src="{{static "map.js"}}"></script>
 <style>
-:root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a64; --line: #e3e0d8; --accent: #b4441f; --chip: #f0ede5; }
-@media (prefers-color-scheme: dark) {
-  :root { --bg: #161614; --fg: #ecebe6; --muted: #a09e96; --line: #33322e; --accent: #f08a5d; --chip: #23221f; }
+/* Hallmark · genre: editorial · macrostructure: Map / Diagram · theme: Newsprint · enrichment: none (the map is the image) · nav: N6 masthead (compact) · footer: Ft4 dense colophon
+ * tone: civic broadsheet · anchor hue: burgundy 28 */
+@font-face { font-family: "Newsreader"; src: url({{static "newsreader.woff2"}}) format("woff2"); font-weight: 200 800; font-display: swap; }
+@font-face { font-family: "Plex Mono"; src: url({{static "plex-mono-400.woff2"}}) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Plex Mono"; src: url({{static "plex-mono-500.woff2"}}) format("woff2"); font-weight: 500; font-display: swap; }
+
+:root {
+  --color-paper:     oklch(92% 0.045 50);
+  --color-paper-2:   oklch(89% 0.050 50);
+  --color-field:     oklch(96% 0.022 55);
+  --color-rule:      oklch(68% 0.030 40);
+  --color-rule-2:    oklch(35% 0.020 35);
+  --color-muted:     oklch(44% 0.022 35);
+  --color-ink:       oklch(15% 0.030 25);
+  --color-accent:    oklch(32% 0.10 28);
+  --color-accent-2:  oklch(42% 0.13 30);
+  --color-on-accent: oklch(96% 0.022 55);
+  --color-pin:       oklch(45% 0.15 30);
+  --color-cluster:   oklch(32% 0.10 28 / 0.88);
+  --color-focus:     oklch(48% 0.18 30);
+  --map-filter:      grayscale(1) contrast(0.9) brightness(1.04);
+  --map-blend:       multiply;
+
+  --font-display: "Newsreader", "Iowan Old Style", Georgia, serif;
+  --font-body:    "Newsreader", "Iowan Old Style", Georgia, serif;
+  --font-label:   "Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1.0625rem;
+  --text-lg:   1.25rem;
+  --text-xl:   1.625rem;
+  --text-display: clamp(2.25rem, 1.5rem + 3.2vw, 4.25rem);
+
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  --frame: 74rem;
+  --gutter: clamp(1rem, 0.5rem + 2vw, 2rem);
+  --rule-hair: 1px;
+  --radius: 0;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
 }
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper:     oklch(19% 0.020 40);
+    --color-paper-2:   oklch(23% 0.022 40);
+    --color-field:     oklch(15% 0.018 40);
+    --color-rule:      oklch(36% 0.022 40);
+    --color-rule-2:    oklch(70% 0.025 50);
+    --color-muted:     oklch(72% 0.020 50);
+    --color-ink:       oklch(93% 0.020 60);
+    --color-accent:    oklch(80% 0.09 42);
+    --color-accent-2:  oklch(88% 0.07 50);
+    --color-on-accent: oklch(17% 0.030 30);
+    --color-pin:       oklch(72% 0.15 35);
+    --color-cluster:   oklch(80% 0.09 42 / 0.9);
+    --color-focus:     oklch(84% 0.13 55);
+    --map-filter:      grayscale(1) invert(1) contrast(0.8) brightness(0.85);
+    --map-blend:       screen;
+  }
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-a { color: var(--accent); }
-header, main, footer { max-width: 60rem; margin: 0 auto; padding: 1rem; }
-header { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: center; border-bottom: 1px solid var(--line); }
-header .brand { font-weight: 700; color: var(--fg); text-decoration: none; letter-spacing: -.01em; }
-form { display: flex; flex: 1 1 18rem; gap: .5rem; }
-input[type=search] { flex: 1; min-width: 0; padding: .5rem .75rem; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: .4rem; }
-button { padding: .5rem 1rem; font: inherit; color: var(--bg); background: var(--accent); border: 0; border-radius: .4rem; cursor: pointer; }
-h1 { font-size: 1.6rem; line-height: 1.2; margin: 1rem 0 .25rem; letter-spacing: -.01em; }
-h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; }
-.muted { color: var(--muted); }
-ul.plain { list-style: none; padding: 0; margin: 0; }
-ul.plain li { padding: .6rem 0; border-bottom: 1px solid var(--line); }
-.chip { display: inline-block; font-size: .8rem; padding: 0 .45rem; border-radius: .3rem; background: var(--chip); color: var(--muted); }
-.timeline li { display: grid; grid-template-columns: 7.5rem 1fr; gap: .25rem 1rem; }
-.timeline time { color: var(--muted); font-variant-numeric: tabular-nums; }
-@media (max-width: 34rem) { .timeline li { grid-template-columns: 1fr; } }
-iframe { width: 100%; height: 16rem; border: 1px solid var(--line); border-radius: .4rem; margin-top: 1rem; }
-footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); margin-top: 3rem; }
+html, body { overflow-x: clip; }
+body { margin: 0; background: var(--color-paper); color: var(--color-ink); font: 400 var(--text-base)/1.55 var(--font-body); font-optical-sizing: auto; }
+a { color: var(--color-accent); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+a:hover { color: var(--color-accent-2); text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+h1, h2 { font-family: var(--font-display); font-style: normal; margin: 0; overflow-wrap: anywhere; min-width: 0; }
+h1 { font-size: var(--text-display); font-weight: 700; line-height: 1.02; letter-spacing: -0.02em; }
+h2 { font-size: var(--text-lg); font-weight: 600; line-height: 1.2; padding-bottom: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule-2); }
+.muted { color: var(--color-muted); }
+.label { font: 400 var(--text-xs)/1.4 var(--font-label); letter-spacing: 0.02em; color: var(--color-muted); }
+
+.frame { max-width: var(--frame); margin-inline: auto; padding-inline: var(--gutter); }
+
+/* Masthead */
+.mast { border-bottom: 3px double var(--color-rule-2); padding-block: var(--space-md) var(--space-xs); }
+.mast__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-xl); }
+.wordmark { font: 800 var(--text-xl)/1 var(--font-display); letter-spacing: -0.03em; color: var(--color-ink); text-decoration: none; white-space: nowrap; }
+.wordmark:hover { color: var(--color-accent); }
+.dateline { margin: var(--space-sm) 0 0; padding-top: var(--space-2xs); border-top: var(--rule-hair) solid var(--color-rule); }
+.search { display: flex; flex: 1 1 20rem; gap: var(--space-xs); max-width: 36rem; margin-left: auto; }
+.search input { flex: 1; min-width: 0; padding: var(--space-xs) var(--space-sm); font: inherit; color: var(--color-ink); background: var(--color-field);
+  border: var(--rule-hair) solid var(--color-rule-2); border-radius: var(--radius); }
+.search input::placeholder { color: var(--color-muted); }
+.search input:hover { border-color: var(--color-ink); }
+.search input:focus-visible { outline-offset: 0; }
+.search button { padding: var(--space-xs) var(--space-md); font: 500 var(--text-sm)/1 var(--font-label); letter-spacing: 0.02em; white-space: nowrap;
+  color: var(--color-on-accent); background: var(--color-accent); border: 0; border-radius: var(--radius); cursor: pointer;
+  transition: background-color var(--dur-micro) var(--ease-out); }
+.search button:hover { background: var(--color-accent-2); }
+.search button:active { transform: translateY(1px); }
+
+main { padding-block: var(--space-xl) var(--space-3xl); }
+
+/* Front page: the map is the page */
+.lede { display: grid; gap: var(--space-sm); padding-bottom: var(--space-lg); }
+.lede p { margin: 0; max-width: 60ch; font-size: var(--text-lg); line-height: 1.45; color: var(--color-muted); }
+.atlas { margin: 0 calc(50% - 50vw); border-block: var(--rule-hair) solid var(--color-rule-2); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-xl); align-items: center; padding-top: var(--space-sm); }
+.legend > span { display: inline-flex; align-items: center; gap: var(--space-xs); }
+.key { display: inline-grid; place-items: center; flex: none; border-radius: 50%; border: 2px solid var(--color-paper); }
+.key--one { width: 12px; height: 12px; background: var(--color-pin); }
+.key--many { width: 24px; height: 24px; background: var(--color-cluster); color: var(--color-on-accent); font: 500 0.6875rem/1 var(--font-label); }
+#map-status:empty { display: none; }
+#map-status { color: var(--color-focus); }
+
+/* The map, everywhere */
+.map { position: relative; background: var(--color-paper-2); isolation: isolate; }
+.map--atlas { height: clamp(22rem, 68vh, 48rem); }
+.map--inset { height: 18rem; border: var(--rule-hair) solid var(--color-rule-2); }
+.map::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; z-index: 1000; background: var(--color-pin); opacity: 0; transition: opacity var(--dur-short) var(--ease-out); pointer-events: none; }
+.map.is-loading::before { opacity: 1; }
+.map__fallback { margin: 0; padding: var(--space-xl) var(--gutter); }
+.leaflet-container { font-family: var(--font-body); background: var(--color-paper-2); }
+.leaflet-tile-pane { filter: var(--map-filter); mix-blend-mode: var(--map-blend); }
+.leaflet-container a { color: var(--color-accent); }
+.leaflet-bar { border: var(--rule-hair) solid var(--color-rule-2) !important; border-radius: var(--radius) !important; box-shadow: none !important; }
+.leaflet-bar a, .leaflet-bar a:hover { background: var(--color-paper); color: var(--color-ink); border-color: var(--color-rule); border-radius: var(--radius) !important; }
+.leaflet-bar a:hover { background: var(--color-paper-2); }
+.leaflet-control-attribution { font: 400 0.6875rem/1.4 var(--font-label); color: var(--color-muted); background: var(--color-paper) !important; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--color-paper); color: var(--color-ink); border-radius: var(--radius); box-shadow: 0 0 0 1px var(--color-rule-2); }
+.leaflet-popup-content { margin: var(--space-sm) var(--space-md); font-size: var(--text-base); line-height: 1.35; }
+.popup { display: grid; gap: var(--space-2xs); justify-items: start; }
+.popup strong { font-weight: 600; }
+.popup span { font: 400 var(--text-xs)/1.4 var(--font-label); color: var(--color-muted); }
+.pin span { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; border: 2px solid var(--color-paper);
+  transition: transform var(--dur-micro) var(--ease-out); }
+.pin--one span { background: var(--color-pin); }
+.pin--many span { background: var(--color-cluster); color: var(--color-on-accent); font: 500 0.6875rem/1 var(--font-label); border-width: 1.5px; }
+.pin--here span { background: var(--color-focus); border-width: 3px; }
+.pin:hover span { transform: scale(1.25); }
+.pin:focus-visible { outline: none; }
+.pin:focus-visible span { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+/* Place and business pages */
+.dossier { display: grid; gap: var(--space-xl) var(--space-2xl); grid-template-columns: minmax(0, 1fr); }
+.dossier__head { display: grid; gap: var(--space-xs); }
+.dossier__head p { margin: 0; }
+.dossier__side, .dossier__main { display: grid; gap: var(--space-xl); align-content: start; min-width: 0; }
+.dossier section { display: grid; gap: var(--space-sm); }
+@media (min-width: 62rem) {
+  .dossier { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
+  .dossier__head { grid-column: 1 / -1; }
+  .dossier__side { position: sticky; top: var(--space-md); }
+}
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { padding: var(--space-xs) 0; border-bottom: var(--rule-hair) solid var(--color-rule); display: flex; flex-wrap: wrap; gap: 0 var(--space-sm); align-items: baseline; justify-content: space-between; }
+details summary { cursor: pointer; font: 600 var(--text-lg)/1.2 var(--font-display); padding-bottom: var(--space-xs); border-bottom: var(--rule-hair) solid var(--color-rule-2); }
+details summary:hover { color: var(--color-accent); }
+details[open] summary { margin-bottom: var(--space-xs); }
+
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: var(--space-2xs) var(--space-lg); padding: var(--space-sm) 0; border-bottom: var(--rule-hair) solid var(--color-rule); }
+.timeline time { font: 400 var(--text-sm)/1.55 var(--font-label); font-variant-numeric: tabular-nums; color: var(--color-muted); }
+.timeline .label { display: block; }
+.timeline p { margin: 0; }
+@media (max-width: 34rem) { .timeline li { grid-template-columns: minmax(0, 1fr); } }
+
+/* Search results */
+.results { display: grid; gap: var(--space-lg); max-width: 52rem; }
+.results h1 { font-size: clamp(1.75rem, 1.3rem + 2vw, 2.75rem); }
+
+footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); padding-block: var(--space-lg) var(--space-2xl); }
+.colophon p { margin: 0 0 var(--space-xs); max-width: 72ch; font-size: var(--text-sm); color: var(--color-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { transition-duration: 1ms !important; }
+  .pin:hover span { transform: none; }
+}
 </style>
 </head>
 <body>
-<header>
-  <a class="brand" href="/">city-pulse</a>
-  <form action="/" method="get" role="search">
-    <input id="q" type="search" name="q" value="{{.Query}}" placeholder="An address or a business name" aria-label="An address or a business name">
-    <button type="submit">Search</button>
-  </form>
+<header class="mast">
+  <div class="frame">
+    <div class="mast__row">
+      <a class="wordmark" href="/">city-pulse</a>
+      <form class="search" action="/" method="get" role="search">
+        <input type="search" name="q" value="{{.Query}}" placeholder="An address or a business name" aria-label="An address or a business name">
+        <button type="submit">Search</button>
+      </form>
+    </div>
+    <p class="dateline label">Las Vegas &amp; Clark County{{if not .Updated.IsZero}} · records through <time datetime="{{.Updated.Format "2006-01-02"}}">{{day .Updated}}</time>{{end}}</p>
+  </div>
 </header>
-<main>
+<main class="frame">
 {{- if .Place}}{{template "place" .Place}}
 {{- else if .Business}}{{template "business" .Business}}
 {{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
 {{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
 {{- else if .Searched}}{{template "results" .}}
 {{- else}}
-  <h1>What used to be here?</h1>
-  <p class="muted">Every Las Vegas business license, health inspection and building permit the city, the county and the
-  Southern Nevada Health District publish, merged into one history per address. Search an address to see who has
-  occupied it, or a business to see where it has been.</p>
+  <div class="lede">
+    <h1>What used to be here?</h1>
+    <p>Every business license, health inspection and building permit that Las Vegas, Clark County and the health district
+    publish, merged into one history per address. Pick a building on the map, or search for one.</p>
+  </div>
+  <figure class="atlas">
+    <div id="map" class="map map--atlas" data-lat="36.1447" data-lon="-115.1730" data-zoom="11" role="region" aria-label="Map of Las Vegas buildings with public records">
+      <noscript><p class="map__fallback">The map needs JavaScript. Search works without it.</p></noscript>
+    </div>
+  </figure>
+  <p class="legend label">
+    <span><span class="key key--one" aria-hidden="true"></span>A building with records: select it for its history.</span>
+    <span><span class="key key--many" aria-hidden="true">24</span>Buildings close together: select to zoom in.</span>
+    <span id="map-status" role="status"></span>
+  </p>
 {{- end}}
 </main>
-<footer>
-  Built nightly from public records: Southern Nevada Health District inspections, Clark County and City of Las Vegas
-  business licenses, City of Las Vegas building permits. Matching is automatic and can be wrong; the linked records are as
-  published. Map data © OpenStreetMap contributors.
+<footer class="colophon">
+  <div class="frame">
+    <p>Built nightly from public records: Southern Nevada Health District inspections, Clark County and City of Las Vegas
+    business licenses, and City of Las Vegas building permits. Matching is automatic and can be wrong; each record is shown as published.</p>
+    <p>Map data © OpenStreetMap contributors. Set in Newsreader and IBM Plex Mono. <a href="{{static "LICENSES.txt"}}">Licenses</a>.</p>
+  </div>
 </footer>
 </body>
 </html>
 
 {{define "results"}}
+<section class="results">
   <h1>Results for “{{.Query}}”</h1>
   {{- if not .Hits}}<p class="muted">Nothing matched. Addresses work best as “3570 S Las Vegas Blvd”; names can be partial.</p>{{end}}
-  <ul class="plain">
+  <ol class="list">
   {{- range .Hits}}
-    <li>{{if eq .Kind "place"}}<a href="{{placeURL .ID}}">{{.Title}}</a> <span class="chip">place</span>
-      {{- else}}<a href="{{businessURL .ID}}">{{.Title}}</a> <span class="chip">{{year .Since}}–{{year .Until}}</span>
-      {{- with .Sub}}<br><span class="muted">{{.}}</span>{{end}}{{end}}</li>
+    <li>{{if eq .Kind "place"}}<a href="{{placeURL .ID}}">{{.Title}}</a> <span class="label">address</span>
+      {{- else}}<span><a href="{{businessURL .ID}}">{{.Title}}</a>{{with .Sub}}<br><span class="muted">{{.}}</span>{{end}}</span>
+      <span class="label">{{year .Since}}–{{year .Until}}</span>{{end}}</li>
   {{- end}}
-  </ul>
+  </ol>
+</section>
 {{end}}
 
 {{define "place"}}
-  <h1>{{.Address}}</h1>
-  {{- with .Building}}<p class="muted">A unit of <a href="{{placeURL .ID}}">{{.Address}}</a></p>{{end}}
-  {{- if .Lat}}<iframe title="Map of {{.Address}}" loading="lazy" referrerpolicy="no-referrer" src="{{mapURL (deref .Lat) (deref .Lon)}}"></iframe>{{end}}
-  {{- if .Businesses}}
-  <h2>Businesses here</h2>
-  <ul class="plain">
-  {{- range .Businesses}}
-    <li><a href="{{businessURL .ID}}">{{.Name}}</a> <span class="chip">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}}</span></li>
-  {{- end}}
-  </ul>
-  {{- end}}
-  {{- if .Units}}
-  <h2>Units in this building</h2>
-  <ul class="plain">{{range .Units}}<li><a href="{{placeURL .ID}}">{{.Address}}</a></li>{{end}}</ul>
-  {{- end}}
-  {{template "events" .}}
+<article class="dossier">
+  <header class="dossier__head">
+    {{- with .Building}}<p class="label">A unit of <a href="{{placeURL .ID}}">{{.Address}}</a></p>{{end}}
+    <h1>{{.Address}}</h1>
+    <p class="label">{{len .Businesses}} business{{if ne (len .Businesses) 1}}es{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}}</p>
+  </header>
+  <div class="dossier__side">
+    {{- if .Lat}}
+    <div id="map" class="map map--inset" data-lat="{{deref .Lat}}" data-lon="{{deref .Lon}}" data-zoom="17" data-place="{{.ID}}" data-wheel="off"
+      role="region" aria-label="Map around {{.Address}}"></div>
+    {{- end}}
+    {{- if .Businesses}}
+    <section>
+      <h2>Businesses here</h2>
+      <ul class="list">
+      {{- range .Businesses}}
+        <li><a href="{{businessURL .ID}}">{{.Name}}</a> <span class="label">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}}</span></li>
+      {{- end}}
+      </ul>
+    </section>
+    {{- end}}
+    {{- if .Units}}
+    <details{{if le (len .Units) 12}} open{{end}}>
+      <summary>Units in this building <span class="label">{{len .Units}}</span></summary>
+      <ul class="list">{{range .Units}}<li><a href="{{placeURL .ID}}">{{.Address}}</a></li>{{end}}</ul>
+    </details>
+    {{- end}}
+  </div>
+  <div class="dossier__main">{{template "events" .}}</div>
+</article>
 {{end}}
 
 {{define "business"}}
-  <h1>{{.Name}}</h1>
-  <p class="muted">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}} ·
-  {{with .Place}}<a href="{{placeURL .ID}}">{{.Address}}</a>{{else}}no published address{{end}}</p>
-  {{template "events" .}}
+<article class="dossier">
+  <header class="dossier__head">
+    <h1>{{.Name}}</h1>
+    <p class="label">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}}</p>
+  </header>
+  <div class="dossier__side">
+    {{- with .Place}}
+    {{- if .Lat}}
+    <div id="map" class="map map--inset" data-lat="{{deref .Lat}}" data-lon="{{deref .Lon}}" data-zoom="17" data-place="{{.ID}}" data-wheel="off"
+      role="region" aria-label="Map around {{.Address}}"></div>
+    {{- end}}
+    <p>At <a href="{{placeURL .ID}}">{{.Address}}</a></p>
+    {{- else}}
+    <p class="muted">The records give no usable address.</p>
+    {{- end}}
+  </div>
+  <div class="dossier__main">{{template "events" .}}</div>
+</article>
 {{end}}
 
 {{define "events"}}
-  <h2>Records{{if gt .Total (len .Events)}} <span class="muted">(newest {{len .Events}} of {{.Total}})</span>{{end}}</h2>
-  <ul class="plain timeline">
+<section>
+  <h2>Records{{if gt .Total (len .Events)}} <span class="label">newest {{len .Events}} of {{.Total}}</span>{{end}}</h2>
+  <ol class="timeline">
   {{- range .Events}}
-    <li><time>{{day .Date}}</time>
-      <div>{{source .Source}}{{with .Name}} · {{.}}{{end}}
-        {{- if .Category}}<br><span class="muted">{{.Category}}{{with .Status}} · {{.}}{{end}}</span>{{else}}{{with .Status}}<br><span class="muted">{{.}}</span>{{end}}{{end}}
-        {{- if .BusinessID}}<br><a href="{{businessURL .BusinessID}}">business</a>{{end}}
-        {{- if .PlaceID}} · <a href="{{placeURL .PlaceID}}">place</a>{{end}}</div></li>
+    <li><time datetime="{{.Date.Format "2006-01-02"}}">{{day .Date}}</time>
+      <div><span class="label">{{source .Source}}</span>
+        <p>{{.Name}}{{if and .Name (or .Category .Status)}}<br>{{end}}
+        {{- if or .Category .Status}}<span class="muted">{{.Category}}{{if and .Category .Status}} · {{end}}{{.Status}}</span>{{end}}</p>
+        {{- if or .BusinessID .PlaceID}}<p>
+        {{- if .BusinessID}}<a href="{{businessURL .BusinessID}}">the business</a>{{end}}
+        {{- if .PlaceID}}{{if .BusinessID}} · {{end}}<a href="{{placeURL .PlaceID}}">the place</a>{{end}}</p>{{end}}</div></li>
   {{- end}}
-  </ul>
+  </ol>
+</section>
 {{end}}

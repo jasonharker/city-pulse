@@ -68,6 +68,11 @@ func TestSite(t *testing.T) {
 		{"/place/" + url.PathEscape("3570|S|LAS VEGAS|"), 200, []string{"VAPE CITY", "Units in this building", `href="` + unit + `"`}},
 		{"/business/" + url.PathEscape("3570|S|LAS VEGAS|B/C#snhd:1"), 200, []string{"JOE&#39;S BAR", "2019–2019"}},
 		{"/place/nowhere", 404, []string{"Not found"}},
+		// The fixture's addresses have no coordinates, so no pins; see TestPins.
+		{"/map.json?z=12&s=36&w=-115.3&n=36.3&e=-115", 200, []string{"[]"}},
+		{"/map.json?z=12&s=36&w=-115.3&n=NaN&e=-115", 400, nil},
+		{"/map.json?z=99&s=36&w=-115.3&n=36.3&e=-115", 400, nil},
+		{"/static/map.js", 200, []string{"/map.json?"}},
 		{"/metrics", 200, []string{`citypulse_source_rows_seen{source="snhd"} 3`, `citypulse_source_last_run_ok{source="snhd"} 1`}},
 	} {
 		res, err := http.Get(srv.URL + c.path)
@@ -86,6 +91,9 @@ func TestSite(t *testing.T) {
 		}
 		if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "default-src 'none'") {
 			t.Errorf("GET %s: CSP %q", c.path, csp)
+		}
+		if strings.Contains(string(body), "ZgotmplZ") {
+			t.Errorf("GET %s: html/template rejected a value", c.path)
 		}
 	}
 }
