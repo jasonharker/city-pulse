@@ -115,18 +115,19 @@ Measured on the full data: search 5–12 ms, the busiest place page (3,660 recor
 
 ## Deployment (THALES)
 
-- One namespace: Postgres 16 + PostGIS (hand-rolled, `ceph-rbd` PVC, nightly `pg_dump` CronJob); `serve` Deployment, 2 replicas; one CronJob running `citypulse nightly`.
-- Build: Jenkins → in-cluster `registry` → Flux image bump. Secrets via Vault/ESO.
-- Public exposure: IngressRoute + cloudflared ingress entry + Cloudflare CNAME to the tunnel (both, per `L#118`). Traefik rate-limit middleware on the public search.
-- World egress only for the CronJob pods; `serve` has none.
-- Scaffold with `/thales-deploy` when the service is ready to ship.
+Manifests: `apps/city-pulse/` plus shared-infrastructure entries in `thales-kubernetes` (PR #24).
+- Namespace `city-pulse`: Postgres 16 (`postgres:16-alpine`, pg_trgm; no PostGIS needed) on a 10Gi `ceph-rbd` PVC with `pg_dump` at 02:15; `serve` Deployment ×2 with a ServiceMonitor; CronJob `citypulse nightly` at 03:00 America/Los_Angeles (768Mi request / 1536Mi limit, from a measured 880 MB resolve peak).
+- Build: `Dockerfile` (distroless static, uid 65532) and `Jenkinsfile` (go test, kaniko → `10.10.20.31:5000/city-pulse:<sha>`, trivy, then rewrite the two `# city-pulse-image` lines on `thales-kubernetes` main). Secrets via Vault/ESO at `secret/city-pulse/postgres`.
+- Public exposure: IngressRoute for `citypulse.jasonharker.com` and `citypulse.thales.local` with a 60/min-per-client rate limit, a cloudflared entry, and a Cloudflare CNAME to the tunnel (both, per `L#118`).
+- Network: ingress from traefik and monitoring on 8080 only; egress DNS and same-namespace for all pods, world :443 only for pods labelled `app: citypulse-nightly`.
+- Alert `CityPulseSourceStale` (in `monitoring`): a source without a successful ingest for 3 days.
 
 ## Failure handling
 
 - One source failing never blocks the others.
 - Parse failures keep the raw row and write to `parse_errors`; nothing is silently dropped. Per-source parse-error rate is a metric, so an upstream format change shows up as a spike.
 - Resolve failure → no swap; the site serves the previous tables.
-- Prometheus metrics per source: rows fetched, new versions, parse failures, last success time. A CronJob can't be scraped, so `serve` exposes these on `/metrics` by reading `source_runs`. One alert: any source without a success in 3 days → existing AlertManager → Discord.
+- Prometheus metrics per source: rows fetched, new versions, parse failures, last success time. A CronJob can't be scraped, so `serve` exposes these on `/metrics` by reading `source_runs`. One alert, `CityPulseSourceStale`: any source without a success in 3 days → existing AlertManager → Discord.
 
 ## Testing
 
