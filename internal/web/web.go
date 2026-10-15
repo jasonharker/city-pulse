@@ -4,21 +4,50 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jasonharker/city-pulse/internal/store"
 )
 
-//go:embed page.html
-var pageFS embed.FS
+//go:embed page.html static
+var files embed.FS
+
+// static serves the vendored assets; pages link them with a content hash so
+// they can be cached for good.
+var static, staticVersion = func() (fs.FS, map[string]string) {
+	sub, err := fs.Sub(files, "static")
+	if err != nil {
+		panic(err)
+	}
+	versions := map[string]string{}
+	err = fs.WalkDir(sub, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := fs.ReadFile(sub, name)
+		sum := sha256.Sum256(b)
+		versions[name] = hex.EncodeToString(sum[:5])
+		return err
+	})
+	if err != nil {
+		panic(err)
+	}
+	return sub, versions
+}()
 
 // sourceNames label a source and record kind for readers.
 var sourceNames = map[string]string{
@@ -35,12 +64,14 @@ var page = template.Must(template.New("page.html").Funcs(template.FuncMap{
 	"day":         func(t time.Time) string { return t.Format("Jan 2, 2006") },
 	"year":        func(t time.Time) int { return t.Year() },
 	"deref":       func(f *float64) float64 { return *f },
-	"mapURL": func(lat, lon float64) string {
-		const d = 0.002
-		return fmt.Sprintf("https://www.openstreetmap.org/export/embed.html?bbox=%f,%f,%f,%f&layer=mapnik&marker=%f,%f",
-			lon-d, lat-d, lon+d, lat+d, lat, lon)
+	"static": func(name string) (string, error) {
+		v, ok := staticVersion[name]
+		if !ok {
+			return "", fmt.Errorf("no static file %q", name)
+		}
+		return "/static/" + name + "?v=" + v, nil
 	},
-}).ParseFS(pageFS, "page.html"))
+}).ParseFS(files, "page.html"))
 
 func cmpOr(a, b string) string {
 	if a != "" {
@@ -56,6 +87,8 @@ func Handler(st *store.Store, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /{$}", s.search)
 	mux.HandleFunc("GET /place/{id...}", s.place)
 	mux.HandleFunc("GET /business/{id...}", s.business)
+	mux.HandleFunc("GET /map.json", s.pins)
+	mux.Handle("GET /static/", http.StripPrefix("/static/", forever(http.FileServerFS(static))))
 	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /healthz", s.healthz)
 	return headers(mux)
@@ -75,6 +108,7 @@ type view struct {
 	Place    *store.PlaceView
 	Business *store.BusinessView
 	Status   int
+	Updated  time.Time // the newest successful ingest, for the front page
 }
 
 func (s *server) search(w http.ResponseWriter, r *http.Request) {
@@ -92,8 +126,66 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v.Hits, v.Searched, v.Title = hits, true, q+" · city-pulse"
+	} else if hs, err := s.st.Health(r.Context()); err == nil {
+		// The dateline is a nicety; the front page renders without it.
+		for _, h := range hs {
+			if h.LastSuccess != nil && h.LastSuccess.After(v.Updated) {
+				v.Updated = *h.LastSuccess
+			}
+		}
 	}
 	s.render(w, r, v)
+}
+
+// Pins are clustered into cells about clusterPx pixels wide below rawZoom,
+// where one view holds up to ~17,000 buildings; at rawZoom a dense one holds ~1,500.
+const (
+	rawZoom   = 17
+	clusterPx = 64
+)
+
+func (s *server) pins(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	var b [4]float64 // south, west, north, east
+	for i, k := range []string{"s", "w", "n", "e"} {
+		f, err := strconv.ParseFloat(q.Get(k), 64)
+		if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+			http.Error(w, "s, w, n and e must be numbers", http.StatusBadRequest)
+			return
+		}
+		b[i] = f
+	}
+	z, err := strconv.Atoi(q.Get("z"))
+	if err != nil || z < 0 || z > 20 || b[0] >= b[2] || b[1] >= b[3] {
+		http.Error(w, "z must be a zoom level 0-20 and s<n, w<e", http.StatusBadRequest)
+		return
+	}
+	cell := 0.0
+	if z < rawZoom {
+		cell = 360 * clusterPx / (256 * math.Exp2(float64(z))) // degrees of longitude per clusterPx at zoom z
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	pins, err := s.st.Pins(ctx, b[0], b[1], b[2], b[3], cell)
+	if err != nil {
+		s.log.Error("map", "err", err)
+		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	if err := json.NewEncoder(w).Encode(pins); err != nil {
+		s.log.Error("map", "err", err)
+	}
+}
+
+// forever marks responses cacheable for a year: pages link static files by
+// content hash, so a changed file gets a new URL.
+func forever(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		h.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) place(w http.ResponseWriter, r *http.Request) {
@@ -190,12 +282,16 @@ func (s *server) healthz(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, "ok")
 }
 
-// headers sets the security headers every response carries. The only
-// third-party content is the OpenStreetMap embed on place pages.
+// headers sets the security headers every response carries. Scripts, styles
+// and fonts are our own; the only third-party content is OpenStreetMap tiles.
+// Inline styles stay allowed: the page's <style> block, and Leaflet positions
+// map elements with style attributes. data: images are Leaflet blanking
+// tiles it has dropped.
 func headers(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'none'; style-src 'unsafe-inline'; frame-src https://www.openstreetmap.org; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+			"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'; "+
+				"img-src 'self' data: https://tile.openstreetmap.org; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		h.ServeHTTP(w, r)

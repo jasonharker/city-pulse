@@ -80,7 +80,7 @@ internal/web/             HTTP server, html/template, search, place/business pag
 **Decisions**
 - Hand-written address parser, not libpostal (avoids cgo and a ~2 GB model; Vegas addresses are regular; better exercise; easier to debug).
 - Go owns all matching logic; Postgres (with PostGIS and `pg_trgm`) owns storage, spatial indexing and search indexes.
-- Frontend: server-rendered `html/template`, a small MapLibre or Leaflet map from a CDN on place pages. No SPA, no JS build step.
+- Frontend: server-rendered `html/template`, a Leaflet map vendored into the binary on the front, place and business pages. No SPA, no JS build step.
 
 ## Data flow
 
@@ -104,11 +104,12 @@ A full rebuild takes about a minute at ~1M current records. Incremental resoluti
 A manual overrides table (force-merge / force-split pins, applied last) is added once real mismatches appear on the public site, not before.
 
 ### Serve
-Reads only the swapped-in tables. `citypulse serve [-addr :8080]`; one embedded `html/template` page, no JavaScript.
+Reads only the swapped-in tables. `citypulse serve [-addr :8080]`; one embedded `html/template` page, plus Leaflet 1.9.4 and two OFL fonts vendored into the binary (no CDN, no build step) and served under content-hashed `/static/` URLs.
+- **Front page** — a clickable map of every building with records. `pins` is a materialized view, refreshed by the resolve write, with one pin per building (its units share it). `/map.json?z&s&w&n&e` clusters pins into ~64 px grid cells below zoom 17 (a dense zoom-15 view holds ~17,000 buildings) and returns them one by one, with their place, from 17 up (≤ ~1,500 in the densest view). The valley-wide cluster query is ~90 ms; clusters carry no text, because text aggregates tripled it. Search works without JavaScript.
 - **Search** — a query that parses as an address matches every unit at that number and street (prefix match on the place key, any direction if omitted); every query also matches business names as substrings of a punctuation-free `search` column (`joes` finds `JOE'S BAR`), ranked by `pg_trgm` similarity. 50 results each.
-- **Place page** — map (OpenStreetMap embed iframe; no tile JS), businesses here with spans, the building it is a unit of or the units it contains, and the newest 300 records.
+- **Place page** — the same map, inset at the place with its neighbours clickable; businesses here with spans, the building it is a unit of or the units it contains, and the newest 300 records.
 - **Business page** — span, place, newest 300 records.
-- `Cache-Control: public, max-age=3600` (data changes nightly); strict CSP (`default-src 'none'`, only the OSM frame allowed); 5 s query timeouts.
+- `Cache-Control: public, max-age=3600` (data changes nightly); strict CSP (`default-src 'none'`; scripts, fonts and fetches same-origin only; OpenStreetMap tiles the only third-party content); 5 s query timeouts.
 - `/metrics` (per-source last success, last run ok, rows seen/new, parse errors) and `/healthz` (database ping).
 
 Measured on the full data: search 5–12 ms, the busiest place page (3,660 records) 65 ms.

@@ -217,6 +217,46 @@ func (s *Store) BusinessView(ctx context.Context, id string) (*BusinessView, err
 	return v, err
 }
 
+// Pin is one dot on the map: a building with its place, or N buildings
+// clustered into one grid cell (no place; N may be 1).
+type Pin struct {
+	N       int     `json:"n"`
+	Lat     float64 `json:"lat"`
+	Lon     float64 `json:"lon"`
+	ID      string  `json:"id,omitempty"`
+	Address string  `json:"address,omitempty"`
+	Places  int     `json:"places,omitempty"` // the building and its units
+}
+
+// ponytail: caps on what one map request can return; a viewport never needs more.
+const (
+	maxPins  = 3000
+	maxCells = 5000
+)
+
+// Pins returns the buildings inside a box, clustered into square cells of the
+// given size in degrees, or one by one when cell is 0.
+func (s *Store) Pins(ctx context.Context, south, west, north, east, cell float64) ([]Pin, error) {
+	q := `SELECT 1, lat, lon, id, address, places FROM pins
+		WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4 LIMIT $5`
+	args := []any{south, north, west, east, maxPins}
+	if cell > 0 {
+		// No id or address: text aggregates triple the cost of a valley-wide view.
+		q = `SELECT count(*)::int, avg(lat), avg(lon), '', '', sum(places)::int FROM pins
+			WHERE lat BETWEEN $1 AND $2 AND lon BETWEEN $3 AND $4
+			GROUP BY floor(lat / $6), floor(lon / $6) LIMIT $5`
+		args = append(args[:4], maxCells, cell)
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Pin, error) {
+		var p Pin
+		return p, r.Scan(&p.N, &p.Lat, &p.Lon, &p.ID, &p.Address, &p.Places)
+	})
+}
+
 // SourceHealth is the latest run of one source, for /metrics.
 type SourceHealth struct {
 	Source                 string

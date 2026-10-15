@@ -71,6 +71,9 @@ func (s *Store) ReplaceResolved(ctx context.Context, r resolve.Result) error {
 			return err
 		}
 	}
+	if _, err := tx.Exec(ctx, "REFRESH MATERIALIZED VIEW pins"); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
