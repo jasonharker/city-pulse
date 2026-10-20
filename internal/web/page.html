@@ -181,6 +181,14 @@ details[open] summary { margin-bottom: var(--space-xs); }
 .timeline p { margin: 0; }
 @media (max-width: 34rem) { .timeline li { grid-template-columns: minmax(0, 1fr); } }
 
+/* Succession: the businesses at a place on one time axis */
+.strip ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-sm); }
+.strip li { display: grid; gap: var(--space-2xs); }
+.strip__track { position: relative; height: 0.75rem; background: var(--color-paper-2); }
+.strip__bar { position: absolute; inset-block: 0; background: var(--color-pin); }
+.strip__bar--closed { background: var(--color-rule-2); }
+.strip__axis { display: flex; justify-content: space-between; margin: 0; }
+
 /* A record's versions */
 .fields { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .fields th, .fields td { padding: var(--space-2xs) var(--space-xs) var(--space-2xs) 0; border-bottom: var(--rule-hair) solid var(--color-rule); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
@@ -294,7 +302,21 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
     </details>
     {{- end}}
   </div>
-  <div class="dossier__main">{{template "events" .}}</div>
+  <div class="dossier__main">
+    {{- with succession .Businesses}}
+    <section class="strip">
+      <h2>What was here, when{{if gt .Dated (len .Bars)}} <span class="label">newest {{len .Bars}} of {{.Dated}}</span>{{end}}</h2>
+      <ol>
+      {{- range .Bars}}
+        <li><span><a href="{{businessURL .ID}}">{{.Name}}</a> <span class="label">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}}</span></span>
+          <span class="strip__track" aria-hidden="true"><span class="strip__bar{{if .Closed}} strip__bar--closed{{end}}" style="left: {{printf "%.2f" .Left}}%; width: {{printf "%.2f" .Width}}%"></span></span></li>
+      {{- end}}
+      </ol>
+      <p class="strip__axis label" aria-hidden="true"><span>{{.From}}</span><span>{{.Through}}</span></p>
+    </section>
+    {{- end}}
+    {{template "events" .}}
+  </div>
 </article>
 {{end}}
 

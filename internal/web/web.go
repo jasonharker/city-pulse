@@ -70,6 +70,7 @@ var page = template.Must(template.New("page.html").Funcs(template.FuncMap{
 	"businessURL": businessURL,
 	"recordURL":   recordURL,
 	"source":      source,
+	"succession":  newSuccession,
 	"day":         func(t time.Time) string { return t.Format("Jan 2, 2006") },
 	"year":        func(t time.Time) int { return t.Year() },
 	"deref":       func(f *float64) float64 { return *f },

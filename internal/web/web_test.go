@@ -73,6 +73,7 @@ func TestSite(t *testing.T) {
 		{"/?q=3570+las+vegas+blvd", 200, []string{`href="` + unit + `"`, "3570 S LAS VEGAS BLVD STE B/C"}},
 		{"/?q=joes", 200, []string{"JOE&#39;S BAR"}},
 		{unit, 200, []string{"JOE&#39;S BAR", "&lt;b&gt;Taco&lt;/b&gt; Place", "A unit of", "Health inspection (SNHD)", "May 1, 2019",
+			"What was here, when", `style="left: 32.88%; width: 0.50%"`,
 			`href="/record/snhd/1">2 versions</a>`}},
 		{"/record/snhd/1", 200, []string{"JOE&#39;S BAR", "2 versions", "<td>s</td><td>Closed</td>", "As first published"}},
 		{"/record/nope/1", 404, []string{"Not found"}},
