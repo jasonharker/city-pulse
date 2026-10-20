@@ -6,6 +6,9 @@
 <meta name="color-scheme" content="light dark">
 <title>{{.Title}}</title>
 <link rel="icon" href="{{static "icon.svg"}}" type="image/svg+xml">
+{{- with .Feed}}
+<link rel="alternate" type="application/atom+xml" href="{{.}}">
+{{- end}}
 <link rel="preload" href="{{static "newsreader.woff2"}}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{static "leaflet.css"}}">
 <script defer src="{{static "leaflet.js"}}"></script>
@@ -221,13 +224,14 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
         <button type="submit">Search</button>
       </form>
     </div>
-    <p class="dateline label">Las Vegas &amp; Clark County{{if not .Updated.IsZero}} · records through <time datetime="{{.Updated.Format "2006-01-02"}}">{{day .Updated}}</time>{{end}}</p>
+    <p class="dateline label">Las Vegas &amp; Clark County{{if not .Updated.IsZero}} · records through <time datetime="{{.Updated.Format "2006-01-02"}}">{{day .Updated}}</time>{{end}} · <a href="/changes">What changed this week</a></p>
   </div>
 </header>
 <main class="frame">
 {{- if .Place}}{{template "place" .Place}}
 {{- else if .Business}}{{template "business" .Business}}
 {{- else if .Record}}{{template "record" .Record}}
+{{- else if eq .Page "changes"}}{{template "changes" .}}
 {{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
 {{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
 {{- else if .Searched}}{{template "results" .}}
@@ -278,7 +282,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
   <header class="dossier__head">
     {{- with .Building}}<p class="label">A unit of <a href="{{placeURL .ID}}">{{.Address}}</a></p>{{end}}
     <h1>{{.Address}}</h1>
-    <p class="label">{{len .Businesses}} business{{if ne (len .Businesses) 1}}es{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}}</p>
+    <p class="label">{{len .Businesses}} business{{if ne (len .Businesses) 1}}es{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}} · <a href="{{placeFeedURL .ID}}">follow with a feed reader</a></p>
   </header>
   <div class="dossier__side">
     {{- if .Lat}}
@@ -324,7 +328,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
 <article class="dossier">
   <header class="dossier__head">
     <h1>{{.Name}}</h1>
-    <p class="label">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}}</p>
+    <p class="label">{{year .First}}–{{year .Last}}{{if .Closed}} · closed{{end}} · {{.Total}} record{{if ne .Total 1}}s{{end}} · <a href="{{businessFeedURL .ID}}">follow with a feed reader</a></p>
   </header>
   <div class="dossier__side">
     {{- with .Place}}
@@ -395,4 +399,27 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
   {{- end}}
   </tbody>
 </table>
+{{end}}
+{{define "changes"}}
+<section class="results">
+  <h1>What changed</h1>
+  <p class="muted">Records the nightly runs found new, changed or no longer published over the last week{{if .Truncated}} (the newest 500){{end}}.
+    <a href="/changes.atom">Follow with a feed reader</a>.</p>
+  {{- if not .Nights}}<p class="muted">Nothing changed this week.</p>{{end}}
+  {{- range .Nights}}
+  <section>
+    <h2>{{day .Date}} <span class="label">{{.New}} new · {{.Updated}} updated · {{.Withdrawn}} no longer published</span></h2>
+    <ol class="timeline">
+    {{- range .Changes}}
+      <li><span class="label">{{what .What}}</span>
+        <div><span class="label">{{source .Source}}</span>
+          <p>{{or .Name .Address .RecordID}}{{if or .Category .Status}}<br><span class="muted">{{.Category}}{{if and .Category .Status}} · {{end}}{{.Status}}</span>{{end}}</p>
+          <p>{{if .BusinessID}}<a href="{{businessURL .BusinessID}}">the business</a> · {{end}}
+          {{- if .PlaceID}}<a href="{{placeURL .PlaceID}}">the place</a> · {{end}}
+          {{- /**/}}<a href="{{recordURL .Source .RecordID}}">the record</a></p></div></li>
+    {{- end}}
+    </ol>
+  </section>
+  {{- end}}
+</section>
 {{end}}

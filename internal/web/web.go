@@ -66,14 +66,17 @@ func recordURL(src, id string) string {
 func source(s string) string { return cmpOr(sourceNames[s], s) }
 
 var page = template.Must(template.New("page.html").Funcs(template.FuncMap{
-	"placeURL":    placeURL,
-	"businessURL": businessURL,
-	"recordURL":   recordURL,
-	"source":      source,
-	"succession":  newSuccession,
-	"day":         func(t time.Time) string { return t.Format("Jan 2, 2006") },
-	"year":        func(t time.Time) int { return t.Year() },
-	"deref":       func(f *float64) float64 { return *f },
+	"placeURL":        placeURL,
+	"businessURL":     businessURL,
+	"recordURL":       recordURL,
+	"placeFeedURL":    placeFeedURL,
+	"businessFeedURL": businessFeedURL,
+	"what":            func(w string) string { return whatLabels[w] },
+	"source":          source,
+	"succession":      newSuccession,
+	"day":             func(t time.Time) string { return t.Format("Jan 2, 2006") },
+	"year":            func(t time.Time) int { return t.Year() },
+	"deref":           func(f *float64) float64 { return *f },
 	"static": func(name string) (string, error) {
 		v, ok := staticVersion[name]
 		if !ok {
@@ -98,6 +101,10 @@ func Handler(st *store.Store, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /place/{id...}", s.place)
 	mux.HandleFunc("GET /business/{id...}", s.business)
 	mux.HandleFunc("GET /record/{source}/{id...}", s.record)
+	mux.HandleFunc("GET /changes", s.changes)
+	mux.HandleFunc("GET /changes.atom", s.changesFeed)
+	mux.HandleFunc("GET /feed/place/{id...}", s.placeFeed)
+	mux.HandleFunc("GET /feed/business/{id...}", s.businessFeed)
 	mux.HandleFunc("GET /map.json", s.pins)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", forever(http.FileServerFS(static))))
 	mux.HandleFunc("GET /metrics", s.metrics)
@@ -112,15 +119,19 @@ type server struct {
 
 // view is the data every page renders with; one of the parts is set.
 type view struct {
-	Title    string
-	Query    string
-	Hits     []store.Hit
-	Searched bool
-	Place    *store.PlaceView
-	Business *store.BusinessView
-	Record   *store.RecordView
-	Status   int
-	Updated  time.Time // the newest successful ingest, for the front page
+	Title     string
+	Query     string
+	Hits      []store.Hit
+	Searched  bool
+	Place     *store.PlaceView
+	Business  *store.BusinessView
+	Record    *store.RecordView
+	Page      string // "changes" or "sources"
+	Nights    []night
+	Truncated bool   // Nights hold only the newest maxPageChanges changes
+	Feed      string // the page's Atom feed, for autodiscovery
+	Status    int
+	Updated   time.Time // the newest successful ingest, for the front page
 }
 
 func (s *server) search(w http.ResponseWriter, r *http.Request) {
@@ -138,15 +149,26 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v.Hits, v.Searched, v.Title = hits, true, q+" · city-pulse"
-	} else if hs, err := s.st.Health(r.Context()); err == nil {
+	} else {
 		// The dateline is a nicety; the front page renders without it.
-		for _, h := range hs {
-			if h.LastSuccess != nil && h.LastSuccess.After(v.Updated) {
-				v.Updated = *h.LastSuccess
-			}
-		}
+		v.Updated = s.lastIngest(r.Context())
 	}
 	s.render(w, r, v)
+}
+
+// lastIngest is when the newest successful ingest finished; zero if unknown.
+func (s *server) lastIngest(ctx context.Context) time.Time {
+	var t time.Time
+	hs, err := s.st.Health(ctx)
+	if err != nil {
+		return t
+	}
+	for _, h := range hs {
+		if h.LastSuccess != nil && h.LastSuccess.After(t) {
+			t = *h.LastSuccess
+		}
+	}
+	return t
 }
 
 func (s *server) record(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +247,7 @@ func (s *server) place(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, view{Title: p.Address + " · city-pulse", Place: p})
+	s.render(w, r, view{Title: p.Address + " · city-pulse", Place: p, Feed: placeFeedURL(p.ID)})
 }
 
 func (s *server) business(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +258,7 @@ func (s *server) business(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.render(w, r, view{Title: b.Name + " · city-pulse", Business: b})
+	s.render(w, r, view{Title: b.Name + " · city-pulse", Business: b, Feed: businessFeedURL(b.ID)})
 }
 
 func (s *server) render(w http.ResponseWriter, r *http.Request, v view) {
