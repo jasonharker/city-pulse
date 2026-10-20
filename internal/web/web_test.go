@@ -64,12 +64,17 @@ func TestSite(t *testing.T) {
 	t.Cleanup(srv.Close)
 
 	unit := "/place/" + url.PathEscape("3570|S|LAS VEGAS|B/C")
+	// Bodies that must not contain a string, by path.
+	deny := map[string][]string{
+		"/changes.atom": {"New: JOE&#39;S BAR"}, // the initial load is not a change
+		"/feed/business/" + url.PathEscape("3570|S|LAS VEGAS|B/C#snhd:2"): {"0001-01-01"},
+	}
 	for _, c := range []struct {
 		path   string
 		status int
 		want   []string
 	}{
-		{"/", 200, []string{"What used to be here?"}},
+		{"/", 200, []string{"What used to be here?", `<link rel="alternate" type="application/atom+xml" href="/changes.atom">`}},
 		{"/?q=3570+las+vegas+blvd", 200, []string{`href="` + unit + `"`, "3570 S LAS VEGAS BLVD STE B/C"}},
 		{"/?q=joes", 200, []string{"JOE&#39;S BAR"}},
 		{unit, 200, []string{"JOE&#39;S BAR", "&lt;b&gt;Taco&lt;/b&gt; Place", "A unit of", "Health inspection (SNHD)", "May 1, 2019",
@@ -88,6 +93,7 @@ func TestSite(t *testing.T) {
 		{"/feed/place/" + url.PathEscape("3570|S|LAS VEGAS|B/C"), 200, []string{"<title>3570 S LAS VEGAS BLVD STE B/C · city-pulse</title>", "<entry>"}},
 		{"/feed/business/" + url.PathEscape("3570|S|LAS VEGAS|B/C#snhd:2"), 200, []string{"<updated>"}},
 		{"/feed/place/nowhere", 404, nil},
+		{"/feed/business/nowhere", 404, nil},
 		// The fixture's addresses have no coordinates, so no pins; see TestPins.
 		{"/map.json?z=12&s=36&w=-115.3&n=36.3&e=-115", 200, []string{"[]"}},
 		{"/map.json?z=12&s=36&w=-115.3&n=NaN&e=-115", 400, nil},
@@ -103,6 +109,11 @@ func TestSite(t *testing.T) {
 		res.Body.Close()
 		if res.StatusCode != c.status {
 			t.Errorf("GET %s: status %d, want %d", c.path, res.StatusCode, c.status)
+		}
+		for _, d := range deny[c.path] {
+			if strings.Contains(string(body), d) {
+				t.Errorf("GET %s: body has %q", c.path, d)
+			}
 		}
 		for _, w := range c.want {
 			if !strings.Contains(string(body), w) {

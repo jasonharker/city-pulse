@@ -408,7 +408,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
   {{- if not .Nights}}<p class="muted">Nothing changed this week.</p>{{end}}
   {{- range .Nights}}
   <section>
-    <h2>{{day .Date}} <span class="label">{{.New}} new · {{.Updated}} updated · {{.Withdrawn}} no longer published</span></h2>
+    <h2>{{day .Date}} <span class="label">{{.New}} new · {{.Updated}} updated · {{.Withdrawn}} no longer published{{if .Partial}} · partial: the page stops at the newest 500 changes{{end}}</span></h2>
     <ol class="timeline">
     {{- range .Changes}}
       <li><span class="label">{{what .What}}</span>

@@ -25,3 +25,16 @@ func TestNights(t *testing.T) {
 		t.Errorf("second night = %+v", n)
 	}
 }
+
+func TestPageNights(t *testing.T) {
+	at := func(day int) time.Time { return time.Date(2026, 10, day, 10, 0, 0, 0, time.UTC) }
+	cs := []store.Change{{What: "new", At: at(19)}, {What: "new", At: at(18)}, {What: "new", At: at(18)}}
+	ns, trunc := pageNights(cs, 2)
+	if !trunc || len(ns) != 2 || ns[0].Partial || !ns[1].Partial || len(ns[1].Changes) != 1 {
+		t.Errorf("capped: trunc=%v nights=%+v", trunc, ns)
+	}
+	ns, trunc = pageNights(cs, 3)
+	if trunc || ns[1].Partial {
+		t.Errorf("uncapped: trunc=%v nights=%+v", trunc, ns)
+	}
+}

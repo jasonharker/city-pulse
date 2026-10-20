@@ -152,6 +152,7 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// The dateline is a nicety; the front page renders without it.
 		v.Updated = s.lastIngest(r.Context())
+		v.Feed = "/changes.atom"
 	}
 	s.render(w, r, v)
 }
