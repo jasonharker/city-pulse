@@ -57,6 +57,10 @@ func TestChangesAndRecordView(t *testing.T) {
 		t.Errorf("Changes since now = %d, %v; want none (all runs started before)", len(later), err)
 	}
 
+	if top, err := st.Changes(ctx, since, 1); err != nil || len(top) != 1 || top[0].ObservationID != cs[0].ObservationID {
+		t.Errorf("Changes limit 1 = %+v, %v; want the newest change %+v", top, err, cs[0])
+	}
+
 	recent, err := st.Changes(ctx, mid, 100)
 	if err != nil || len(recent) != 1 || recent[0].RecordID != "a" || recent[0].What != "updated" {
 		t.Errorf("Changes since mid = %+v, %v; want only run 3's update of a", recent, err)
