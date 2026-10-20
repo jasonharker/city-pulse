@@ -233,7 +233,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
 {{- else if .Record}}{{template "record" .Record}}
 {{- else if eq .Page "changes"}}{{template "changes" .}}
 {{- else if eq .Page "sources"}}{{template "sources" .Sources}}
-{{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
+{{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">Nothing here. Try a search.</p>
 {{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
 {{- else if .Searched}}{{template "results" .}}
 {{- else}}

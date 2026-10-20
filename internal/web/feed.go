@@ -42,8 +42,7 @@ type night struct {
 func nights(cs []store.Change) []night {
 	var ns []night
 	for _, c := range cs {
-		y, m, d := c.At.UTC().Date()
-		day := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+		day := utcDay(c.At)
 		if len(ns) == 0 || !ns[len(ns)-1].Date.Equal(day) {
 			ns = append(ns, night{Date: day})
 		}
@@ -62,16 +61,25 @@ func nights(cs []store.Change) []night {
 }
 
 // pageNights groups cs, which was fetched with one row beyond max, into nights;
-// when that row came back the oldest night is partial.
+// when that row came back from the same night as the oldest shown, that night
+// is partial.
 func pageNights(cs []store.Change, max int) (ns []night, truncated bool) {
+	var extra store.Change
 	if truncated = len(cs) > max; truncated {
-		cs = cs[:max]
+		extra, cs = cs[max], cs[:max]
 	}
 	ns = nights(cs)
 	if truncated && len(ns) > 0 {
-		ns[len(ns)-1].Partial = true
+		last := &ns[len(ns)-1]
+		last.Partial = last.Date.Equal(utcDay(extra.At))
 	}
 	return ns, truncated
+}
+
+// utcDay is the start of t's UTC day.
+func utcDay(t time.Time) time.Time {
+	y, m, d := t.UTC().Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
 
 func (s *server) changes(w http.ResponseWriter, r *http.Request) {
@@ -158,9 +166,14 @@ func (s *server) atom(ctx context.Context, w http.ResponseWriter, r *http.Reques
 	}
 	f.Updated = updated.UTC().Format(time.RFC3339)
 	for _, c := range cs {
+		id := fmt.Sprintf("tag:citypulse.jasonharker.com,2026:%s/%d", c.What, c.ObservationID)
+		if c.What == "withdrawn" {
+			// A record can be withdrawn, reappear and be withdrawn again.
+			id += fmt.Sprintf("/%d", c.At.Unix())
+		}
 		f.Entries = append(f.Entries, atomEntry{
 			Title:   whatLabels[c.What] + ": " + cmp.Or(c.Name, c.Address, c.RecordID) + " (" + source(c.Source) + ")",
-			ID:      fmt.Sprintf("tag:citypulse.jasonharker.com,2026:%s/%d", c.What, c.ObservationID),
+			ID:      id,
 			Updated: c.At.UTC().Format(time.RFC3339),
 			Link:    atomLink{Href: siteURL + recordURL(c.Source, c.RecordID)},
 			Summary: join(" · ", c.Address, c.Category, c.Status),

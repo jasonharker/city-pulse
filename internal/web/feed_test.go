@@ -37,4 +37,9 @@ func TestPageNights(t *testing.T) {
 	if trunc || ns[1].Partial {
 		t.Errorf("uncapped: trunc=%v nights=%+v", trunc, ns)
 	}
+	// The cap falls between nights: every shown night is whole.
+	ns, trunc = pageNights(append(cs, store.Change{What: "new", At: at(17)}), 3)
+	if !trunc || len(ns) != 2 || ns[1].Partial || len(ns[1].Changes) != 2 {
+		t.Errorf("capped between nights: trunc=%v nights=%+v", trunc, ns)
+	}
 }
