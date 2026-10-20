@@ -142,12 +142,15 @@ type FieldChange struct {
 	Field, From, To string
 }
 
-// RecordView loads a record's version history.
+// RecordView loads a record's version history. Versions from one run (the
+// permit archive's lifecycle snapshots) are in the order resolve picks the
+// current one, so the newest here is the record's current version.
 func (s *Store) RecordView(ctx context.Context, source, id string) (*RecordView, error) {
 	rows, err := s.pool.Query(ctx, `SELECT o.first_seen, o.withdrawn_at, o.name, o.category, o.status, o.address,
 			o.start_date, o.end_date, o.payload, coalesce(l.place_id, ''), coalesce(l.business_id, ''), l.observation_id IS NOT NULL
 		FROM observations o LEFT JOIN links l ON l.observation_id = o.id
-		WHERE o.source = $1 AND o.record_id = $2 ORDER BY o.id`, source, id)
+		WHERE o.source = $1 AND o.record_id = $2
+		ORDER BY o.first_run_id, `+statusRankSQL+`, o.id`, source, id)
 	if err != nil {
 		return nil, err
 	}

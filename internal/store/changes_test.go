@@ -104,3 +104,31 @@ func TestChangesAndRecordView(t *testing.T) {
 		t.Errorf("RecordView(nope) err = %v, want ErrNotFound", err)
 	}
 }
+
+// The permit archive publishes several lifecycle snapshots of one permit in
+// one run; the record page's newest version must be the one resolve picks.
+func TestRecordViewSameRunOrder(t *testing.T) {
+	st, _ := storetest.New(t)
+	ctx := context.Background()
+	closed := obs(t, "p", map[string]any{"STAT": "Closed"})
+	closed.Status = "Closed"
+	accepted := obs(t, "p", map[string]any{"STAT": "Accepted"})
+	accepted.Status = "Accepted"
+	// Separate batches, so Closed gets the lower id.
+	run(t, st, []source.Observation{closed}, []source.Observation{accepted})
+
+	cur, err := st.CurrentObservations(ctx)
+	if err != nil || len(cur) != 1 {
+		t.Fatalf("CurrentObservations = %+v, %v", cur, err)
+	}
+	rv, err := st.RecordView(ctx, "test", "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rv.Latest().Status; got != "Closed" || got != cur[0].Status {
+		t.Errorf("RecordView newest status = %q, CurrentObservations = %q; want both Closed", got, cur[0].Status)
+	}
+	if v := rv.Latest(); v.First || !reflect.DeepEqual(v.Fields, []store.FieldChange{{Field: "STAT", From: "Accepted", To: "Closed"}}) {
+		t.Errorf("newest version = %+v, want STAT Accepted -> Closed", v)
+	}
+}
