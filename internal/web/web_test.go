@@ -22,35 +22,43 @@ func TestSite(t *testing.T) {
 	st, _ := storetest.New(t)
 	ctx := context.Background()
 	d := time.Date(2019, 5, 1, 0, 0, 0, 0, time.UTC)
-	var obs []source.Observation
-	for _, o := range []struct{ id, name, addr string }{
-		{"1", "JOE'S BAR", "3570 S LAS VEGAS BLVD STE B/C"},
-		{"2", "<b>Taco</b> Place", "3570 S LAS VEGAS BLVD STE B/C"},
-		{"3", "VAPE CITY", "3570 S LAS VEGAS BLVD"},
-	} {
-		r, err := source.NewRecord(o.id, map[string]any{"n": o.name})
+	// Run 1 is the initial load; run 2 closes JOE'S BAR, a change.
+	for _, closed := range []bool{false, true} {
+		var obs []source.Observation
+		for _, o := range []struct{ id, name, addr string }{
+			{"1", "JOE'S BAR", "3570 S LAS VEGAS BLVD STE B/C"},
+			{"2", "<b>Taco</b> Place", "3570 S LAS VEGAS BLVD STE B/C"},
+			{"3", "VAPE CITY", "3570 S LAS VEGAS BLVD"},
+		} {
+			fields, status := map[string]any{"n": o.name}, ""
+			if closed && o.id == "1" {
+				fields["s"], status = "Closed", "Closed"
+			}
+			r, err := source.NewRecord(o.id, fields)
+			if err != nil {
+				t.Fatal(err)
+			}
+			obs = append(obs, source.Observation{Source: "snhd", RecordID: o.id, Hash: r.Hash(), Payload: r.Payload,
+				Kind: "inspection", Name: o.name, Address: o.addr, BusinessKey: "snhd:" + o.id, Status: status, StartDate: &d})
+		}
+		run, err := st.BeginRun(ctx, "snhd")
 		if err != nil {
 			t.Fatal(err)
 		}
-		obs = append(obs, source.Observation{Source: "snhd", RecordID: o.id, Hash: r.Hash(), Payload: r.Payload,
-			Kind: "inspection", Name: o.name, Address: o.addr, BusinessKey: "snhd:" + o.id, StartDate: &d})
-	}
-	run, err := st.BeginRun(ctx, "snhd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := run.Add(ctx, obs); err != nil {
-		t.Fatal(err)
-	}
-	if err := run.Finish(ctx, store.RunStats{Seen: 3, New: 3}, nil); err != nil {
-		t.Fatal(err)
-	}
-	cur, err := st.CurrentObservations(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := st.ReplaceResolved(ctx, resolve.Build(cur)); err != nil {
-		t.Fatal(err)
+		n, err := run.Add(ctx, obs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := run.Finish(ctx, store.RunStats{Seen: 3, New: n}, nil); err != nil {
+			t.Fatal(err)
+		}
+		cur, err := st.CurrentObservations(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.ReplaceResolved(ctx, resolve.Build(cur)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	srv := httptest.NewServer(web.Handler(st, slog.New(slog.DiscardHandler)))
 	t.Cleanup(srv.Close)
@@ -64,7 +72,11 @@ func TestSite(t *testing.T) {
 		{"/", 200, []string{"What used to be here?"}},
 		{"/?q=3570+las+vegas+blvd", 200, []string{`href="` + unit + `"`, "3570 S LAS VEGAS BLVD STE B/C"}},
 		{"/?q=joes", 200, []string{"JOE&#39;S BAR"}},
-		{unit, 200, []string{"JOE&#39;S BAR", "&lt;b&gt;Taco&lt;/b&gt; Place", "A unit of", "Health inspection (SNHD)", "May 1, 2019"}},
+		{unit, 200, []string{"JOE&#39;S BAR", "&lt;b&gt;Taco&lt;/b&gt; Place", "A unit of", "Health inspection (SNHD)", "May 1, 2019",
+			`href="/record/snhd/1">2 versions</a>`}},
+		{"/record/snhd/1", 200, []string{"JOE&#39;S BAR", "2 versions", "<td>s</td><td>Closed</td>", "As first published"}},
+		{"/record/nope/1", 404, []string{"Not found"}},
+		{"/record/snhd/nope", 404, []string{"Not found"}},
 		{"/place/" + url.PathEscape("3570|S|LAS VEGAS|"), 200, []string{"VAPE CITY", "Units in this building", `href="` + unit + `"`}},
 		{"/business/" + url.PathEscape("3570|S|LAS VEGAS|B/C#snhd:1"), 200, []string{"JOE&#39;S BAR", "2019–2019"}},
 		{"/place/nowhere", 404, []string{"Not found"}},

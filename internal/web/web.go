@@ -57,10 +57,18 @@ var sourceNames = map[string]string{
 	"clvpermit":  "City of Las Vegas building permit",
 }
 
+func placeURL(id string) string    { return "/place/" + url.PathEscape(id) }
+func businessURL(id string) string { return "/business/" + url.PathEscape(id) }
+func recordURL(src, id string) string {
+	return "/record/" + url.PathEscape(src) + "/" + url.PathEscape(id)
+}
+func source(s string) string { return cmpOr(sourceNames[s], s) }
+
 var page = template.Must(template.New("page.html").Funcs(template.FuncMap{
-	"placeURL":    func(id string) string { return "/place/" + url.PathEscape(id) },
-	"businessURL": func(id string) string { return "/business/" + url.PathEscape(id) },
-	"source":      func(s string) string { return cmpOr(sourceNames[s], s) },
+	"placeURL":    placeURL,
+	"businessURL": businessURL,
+	"recordURL":   recordURL,
+	"source":      source,
 	"day":         func(t time.Time) string { return t.Format("Jan 2, 2006") },
 	"year":        func(t time.Time) int { return t.Year() },
 	"deref":       func(f *float64) float64 { return *f },
@@ -87,6 +95,7 @@ func Handler(st *store.Store, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /{$}", s.search)
 	mux.HandleFunc("GET /place/{id...}", s.place)
 	mux.HandleFunc("GET /business/{id...}", s.business)
+	mux.HandleFunc("GET /record/{source}/{id...}", s.record)
 	mux.HandleFunc("GET /map.json", s.pins)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", forever(http.FileServerFS(static))))
 	mux.HandleFunc("GET /metrics", s.metrics)
@@ -107,6 +116,7 @@ type view struct {
 	Searched bool
 	Place    *store.PlaceView
 	Business *store.BusinessView
+	Record   *store.RecordView
 	Status   int
 	Updated  time.Time // the newest successful ingest, for the front page
 }
@@ -135,6 +145,23 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, v)
+}
+
+func (s *server) record(w http.ResponseWriter, r *http.Request) {
+	src := r.PathValue("source")
+	if _, ok := sourceNames[src]; !ok {
+		s.fail(w, r, store.ErrNotFound)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	rv, err := s.st.RecordView(ctx, src, r.PathValue("id"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	l := rv.Latest()
+	s.render(w, r, view{Title: cmpOr(l.Name, l.Address) + " · " + source(src) + " · city-pulse", Record: rv})
 }
 
 // Pins are clustered into cells about clusterPx pixels wide below rawZoom,

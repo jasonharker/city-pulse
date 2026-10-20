@@ -181,9 +181,18 @@ details[open] summary { margin-bottom: var(--space-xs); }
 .timeline p { margin: 0; }
 @media (max-width: 34rem) { .timeline li { grid-template-columns: minmax(0, 1fr); } }
 
+/* A record's versions */
+.fields { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.fields th, .fields td { padding: var(--space-2xs) var(--space-xs) var(--space-2xs) 0; border-bottom: var(--rule-hair) solid var(--color-rule); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.fields th { font: 400 var(--text-xs)/1.4 var(--font-label); color: var(--color-muted); }
+.fields td:first-child { width: 1%; white-space: nowrap; }
+.fields del { color: var(--color-muted); }
+
 /* Search results */
 .results { display: grid; gap: var(--space-lg); max-width: 52rem; }
 .results h1 { font-size: clamp(1.75rem, 1.3rem + 2vw, 2.75rem); }
+.results > section { display: grid; gap: var(--space-sm); }
+.results > section > p { margin: 0; }
 
 footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); padding-block: var(--space-lg) var(--space-2xl); }
 .colophon p { margin: 0 0 var(--space-xs); max-width: 72ch; font-size: var(--text-sm); color: var(--color-muted); }
@@ -210,6 +219,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
 <main class="frame">
 {{- if .Place}}{{template "place" .Place}}
 {{- else if .Business}}{{template "business" .Business}}
+{{- else if .Record}}{{template "record" .Record}}
 {{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
 {{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
 {{- else if .Searched}}{{template "results" .}}
@@ -318,10 +328,49 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
       <div><span class="label">{{source .Source}}</span>
         <p>{{.Name}}{{if and .Name (or .Category .Status)}}<br>{{end}}
         {{- if or .Category .Status}}<span class="muted">{{.Category}}{{if and .Category .Status}} · {{end}}{{.Status}}</span>{{end}}</p>
-        {{- if or .BusinessID .PlaceID}}<p>
-        {{- if .BusinessID}}<a href="{{businessURL .BusinessID}}">the business</a>{{end}}
-        {{- if .PlaceID}}{{if .BusinessID}} · {{end}}<a href="{{placeURL .PlaceID}}">the place</a>{{end}}</p>{{end}}</div></li>
+        <p>
+        {{- if .BusinessID}}<a href="{{businessURL .BusinessID}}">the business</a> · {{end}}
+        {{- if .PlaceID}}<a href="{{placeURL .PlaceID}}">the place</a> · {{end}}
+        {{- /**/}}<a href="{{recordURL .Source .RecordID}}">{{if gt .Versions 1}}{{.Versions}} versions{{else}}the record{{end}}</a></p></div></li>
   {{- end}}
   </ol>
 </section>
+{{end}}
+
+{{define "record"}}
+<article class="results">
+  {{- $l := .Latest}}
+  <header class="dossier__head">
+    <p class="label">{{source .Source}} · record {{.RecordID}}</p>
+    <h1>{{or $l.Name $l.Address}}</h1>
+    <p class="label">{{len .Versions}} version{{if ne (len .Versions) 1}}s{{end}}
+      {{- with $l.Withdrawn}} · no longer published since {{day .}}{{end}}
+      {{- if .BusinessID}} · <a href="{{businessURL .BusinessID}}">the business</a>{{end}}
+      {{- if .PlaceID}} · <a href="{{placeURL .PlaceID}}">the place</a>{{end}}</p>
+  </header>
+  <section>
+    <h2>Versions <span class="label">newest first, dated by the night city-pulse first saw each</span></h2>
+    <ol class="timeline">
+    {{- range .Versions}}
+      <li><time datetime="{{.FirstSeen.Format "2006-01-02"}}">{{day .FirstSeen}}</time>
+        <div><p>{{.Name}}{{if or .Category .Status}}<br><span class="muted">{{.Category}}{{if and .Category .Status}} · {{end}}{{.Status}}</span>{{end}}</p>
+        {{- if .First}}
+          <details><summary>As first published <span class="label">{{len .Fields}} fields</span></summary>{{template "fields" .Fields}}</details>
+        {{- else if .Fields}}{{template "fields" .Fields}}
+        {{- end}}</div></li>
+    {{- end}}
+    </ol>
+  </section>
+</article>
+{{end}}
+
+{{define "fields"}}
+<table class="fields">
+  <thead><tr><th scope="col">Field</th><th scope="col">Value</th></tr></thead>
+  <tbody>
+  {{- range .}}
+    <tr><td>{{.Field}}</td><td>{{with .From}}<del>{{.}}</del> → {{end}}{{.To}}</td></tr>
+  {{- end}}
+  </tbody>
+</table>
 {{end}}
