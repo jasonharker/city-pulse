@@ -3,6 +3,7 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -161,7 +162,7 @@ func (s *server) record(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	l := rv.Latest()
-	s.render(w, r, view{Title: cmpOr(l.Name, l.Address) + " · " + source(src) + " · city-pulse", Record: rv})
+	s.render(w, r, view{Title: cmp.Or(l.Name, l.Address, rv.RecordID) + " · " + source(src) + " · city-pulse", Record: rv})
 }
 
 // Pins are clustered into cells about clusterPx pixels wide below rawZoom,

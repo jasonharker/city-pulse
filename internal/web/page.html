@@ -342,7 +342,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
   {{- $l := .Latest}}
   <header class="dossier__head">
     <p class="label">{{source .Source}} · record {{.RecordID}}</p>
-    <h1>{{or $l.Name $l.Address}}</h1>
+    <h1>{{or $l.Name $l.Address .RecordID}}</h1>
     <p class="label">{{len .Versions}} version{{if ne (len .Versions) 1}}s{{end}}
       {{- with $l.Withdrawn}} · no longer published since {{day .}}{{end}}
       {{- if .BusinessID}} · <a href="{{businessURL .BusinessID}}">the business</a>{{end}}
