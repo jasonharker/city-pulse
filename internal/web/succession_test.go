@@ -45,5 +45,23 @@ func TestSuccession(t *testing.T) {
 	}
 	if s := newSuccession(many); len(s.Bars) != maxBars || s.Dated != maxBars+5 {
 		t.Errorf("bars = %d of %d; want %d of %d", len(s.Bars), s.Dated, maxBars, maxBars+5)
+	} else {
+		if s.Bars[len(s.Bars)-1].ID != "0" || s.From != 2011 || s.To != 2041 {
+			t.Errorf("newest bar %s, axis %d-%d; want newest 30 (bar 0) on 2011-2041", s.Bars[len(s.Bars)-1].ID, s.From, s.To)
+		}
+	}
+
+	// A business on the last day of the axis is clamped inside it.
+	end := newSuccession([]store.BusinessRow{
+		{ID: "end", First: d(2016, 12, 31), Last: d(2016, 12, 31), Dated: true},
+		{ID: "early", First: d(2015, 1, 1), Last: d(2016, 6, 1), Dated: true},
+	})
+	for _, b := range end.Bars {
+		if b.Width < minWidth || b.Left+b.Width > 100 {
+			t.Errorf("bar %s = %.2f+%.2f; want at least %.1f wide, inside 100", b.ID, b.Left, b.Width, minWidth)
+		}
+	}
+	if b := end.Bars[1]; b.ID != "end" || b.Left != 100-minWidth {
+		t.Errorf("end bar = %s at %.2f; want end at %.1f", b.ID, b.Left, 100-minWidth)
 	}
 }
