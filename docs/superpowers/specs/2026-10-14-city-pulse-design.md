@@ -18,8 +18,8 @@ The project is also a deliberate programming exercise: a Go codebase whose compl
 **Not in v1:**
 - Council/commission agendas (unstructured text — a separate sub-project; Clark County's Legistar Web API is the likely starting point).
 - Nevada Secretary of State entity filings (bulk download is paid and currently disabled pending the state's ORION system).
-- User accounts, watches, alerts.
-- City-wide change feed.
+- User accounts and email alerts. Following a place, a business or the city is an Atom feed.
+- Ranking places by turnover. Measured: business counts surface registered-agent suites (977 undated City licenses at one), and restaurant-only succession surfaces ghost kitchens; real storefronts top out at 3 successions.
 - Other cities. The `Source` interface is designed so Chicago/NYC are new source packages, not a redesign.
 
 ## Data sources (v1)
@@ -107,12 +107,15 @@ A manual overrides table (force-merge / force-split pins, applied last) is added
 Reads only the swapped-in tables. `citypulse serve [-addr :8080]`; one embedded `html/template` page, plus Leaflet 1.9.4 and two OFL fonts vendored into the binary (no CDN, no build step) and served under content-hashed `/static/` URLs.
 - **Front page** — a clickable map of every building with records. `pins` is a materialized view, refreshed by the resolve write, with one pin per building (its units share it). `/map.json?z&s&w&n&e` clusters pins into ~64 px grid cells below zoom 17 (a dense zoom-15 view holds ~17,000 buildings) and returns them one by one, with their place, from 17 up (≤ ~1,500 in the densest view). The valley-wide cluster query is ~90 ms; clusters carry no text, because text aggregates tripled it. Search works without JavaScript.
 - **Search** — a query that parses as an address matches every unit at that number and street (prefix match on the place key, any direction if omitted); every query also matches business names as substrings of a punctuation-free `search` column (`joes` finds `JOE'S BAR`), ranked by `pg_trgm` similarity. 50 results each.
-- **Place page** — the same map, inset at the place with its neighbours clickable; businesses here with spans, the building it is a unit of or the units it contains, and the newest 300 records.
+- **Place page** — the same map, inset at the place with its neighbours clickable; businesses here with spans, the building it is a unit of or the units it contains, a succession strip (the newest 30 *dated* businesses as bars on one time axis, oldest first, none with fewer than two; undated City licenses only span the night city-pulse first saw them), and the newest 300 records, each linking its record page.
 - **Business page** — span, place, newest 300 records.
+- **Record page** — `/record/{source}/{id}`: every stored version newest first (versions from one run ordered by lifecycle status, as resolve picks the current one), dated by the night it was first seen, with the payload fields that changed from the version before (the first version lists them all), and whether the source has stopped publishing it. A record with neither name nor address on its newest version is headed by its record id (843 in production).
+- **What changed** — `/changes`: up to 500 changes from the last 7 days of runs, by night; its last night is marked partial when the cap cuts through it. `/changes.atom` the newest 100; `/feed/place/{id}` and `/feed/business/{id}` the newest 50. A change is a version stored by a run after its source's first successful run (the initial load is not a change), new or updated by whether an earlier version exists, or a withdrawal. Versions are windowed by run, because a new source's initial load is also recent; withdrawals by `withdrawn_at` time. The citywide query takes each source's newest versions by `(first_run_id, id)` (`observations (source, first_run_id, id)`) and the newest withdrawals (`observations (withdrawn_at, id)`), each limited before the merge, so its cost follows the limit, not the window: on the production copy 23 ms for a normal week and 33 ms for a night when one source re-versions all 534k of its records (10 s unbounded). The per-source limit is also an optimization fence: without one, once `source_runs` has planner statistics, Postgres hash-joins and sequentially scans all of `observations`. Entries link absolute URLs and have `tag:` ids on the observation id, plus the withdrawal time for withdrawals. The front page advertises `/changes.atom` for feed autodiscovery; place and business pages advertise their own feeds.
+- **Sources** — `/sources`: each source's coverage, known gaps and latest run.
 - `Cache-Control: public, max-age=3600` (data changes nightly); strict CSP (`default-src 'none'`; scripts, fonts and fetches same-origin only; OpenStreetMap tiles the only third-party content); 5 s query timeouts.
 - `/metrics` (per-source last success, last run ok, rows seen/new, parse errors) and `/healthz` (database ping).
 
-Measured on the full data: search 5–12 ms, the busiest place page (3,660 records) 65 ms.
+Measured on the full data: search 5–12 ms, the busiest place page (3,660 records) 65 ms; `/changes` ≈ 40 ms, its feed ≈ 27 ms, a place or business feed ≤ 42 ms, a record page 2 ms.
 
 ## Deployment (THALES)
 

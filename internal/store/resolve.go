@@ -8,6 +8,12 @@ import (
 	"github.com/jasonharker/city-pulse/internal/resolve"
 )
 
+// statusRankSQL ranks a version's status by how far along its lifecycle it is.
+// It orders same-run versions both here and on the record page.
+const statusRankSQL = `CASE WHEN status IN ('Closed', 'Expired', 'Cancelled', 'Withdrawn', 'Deleted') THEN 3
+		WHEN status IN ('Issued', 'Stop Work') THEN 2
+		ELSE 1 END`
+
 // CurrentObservations returns the current version of every source record:
 // the one from the latest run, and among versions first seen in the same run
 // (the permit archive publishes several lifecycle snapshots at once) the most
@@ -18,11 +24,7 @@ func (s *Store) CurrentObservations(ctx context.Context) ([]resolve.Obs, error) 
 		       id, name, address, business_key, status, lat, lon,
 		       coalesce(start_date, first_seen::date), end_date
 		FROM observations
-		ORDER BY source, record_id, first_run_id DESC,
-		         CASE WHEN status IN ('Closed', 'Expired', 'Cancelled', 'Withdrawn', 'Deleted') THEN 3
-		              WHEN status IN ('Issued', 'Stop Work') THEN 2
-		              ELSE 1 END DESC,
-		         id DESC`)
+		ORDER BY source, record_id, first_run_id DESC, `+statusRankSQL+` DESC, id DESC`)
 	if err != nil {
 		return nil, err
 	}

@@ -36,6 +36,8 @@ type Event struct {
 	BusinessID string
 	PlaceID    string
 	Address    string
+	RecordID   string
+	Versions   int // stored versions of the record
 }
 
 // BusinessRow is a business as listed on a place page.
@@ -43,6 +45,7 @@ type BusinessRow struct {
 	ID, Name    string
 	First, Last time.Time
 	Closed      bool
+	Dated       bool // a record carries a date; otherwise First and Last are when city-pulse first saw it
 }
 
 // PlaceView is everything the place page shows.
@@ -130,7 +133,8 @@ func likeEscape(s string) string {
 
 // eventsSQL selects timeline events; the caller appends the WHERE column.
 const eventsSQL = `SELECT coalesce(o.start_date, o.first_seen::date), o.source, o.kind, o.name, o.category, o.status,
-		coalesce(l.business_id, ''), coalesce(l.place_id, ''), o.address, count(*) OVER ()
+		coalesce(l.business_id, ''), coalesce(l.place_id, ''), o.address, o.record_id,
+		(SELECT count(*) FROM observations v WHERE v.source = o.source AND v.record_id = o.record_id), count(*) OVER ()
 	FROM links l JOIN observations o ON o.id = l.observation_id
 	WHERE l.`
 
@@ -143,7 +147,7 @@ func (s *Store) events(ctx context.Context, col, id string) ([]Event, int, error
 	total := 0
 	evs, err := pgx.CollectRows(rows, func(r pgx.CollectableRow) (Event, error) {
 		var e Event
-		err := r.Scan(&e.Date, &e.Source, &e.Kind, &e.Name, &e.Category, &e.Status, &e.BusinessID, &e.PlaceID, &e.Address, &total)
+		err := r.Scan(&e.Date, &e.Source, &e.Kind, &e.Name, &e.Category, &e.Status, &e.BusinessID, &e.PlaceID, &e.Address, &e.RecordID, &e.Versions, &total)
 		// Drop links back to the page being shown: a business has one place.
 		e.PlaceID = ""
 		if col == "business_id" {
@@ -184,8 +188,10 @@ func (s *Store) PlaceView(ctx context.Context, id string) (*PlaceView, error) {
 	if v.Units, err = pgx.CollectRows(rows, pgx.RowToStructByPos[Place]); err != nil {
 		return nil, err
 	}
-	rows, err = s.pool.Query(ctx, `SELECT id, name, first_date, last_date, closed FROM businesses
-		WHERE place_id = $1 ORDER BY first_date DESC, id`, id)
+	rows, err = s.pool.Query(ctx, `SELECT id, name, first_date, last_date, closed,
+			EXISTS (SELECT 1 FROM links l JOIN observations o ON o.id = l.observation_id
+				WHERE l.business_id = b.id AND o.start_date IS NOT NULL)
+		FROM businesses b WHERE place_id = $1 ORDER BY first_date DESC, id`, id)
 	if err != nil {
 		return nil, err
 	}
