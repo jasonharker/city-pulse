@@ -58,6 +58,16 @@ var sourceNames = map[string]string{
 	"clvpermit":  "City of Las Vegas building permit",
 }
 
+// sourceNotes tell readers what each source covers and what it lacks.
+var sourceNotes = map[string]string{
+	"snhd": "Inspections of restaurants and other food businesses by the Southern Nevada Health District, from 2005. " +
+		"Inspections from March 2017 to September 2020 are missing from the district's published data.",
+	"ccbiz": "Business licenses issued by Clark County, which covers the unincorporated valley, the Strip included.",
+	"clvlicense": "Business licenses issued by the City of Las Vegas. The city publishes no issue dates, " +
+		"so these licenses are dated by the night city-pulse first saw them.",
+	"clvpermit": "Building permits issued by the City of Las Vegas: the city's archive through January 2026, then its current permits.",
+}
+
 func placeURL(id string) string    { return "/place/" + url.PathEscape(id) }
 func businessURL(id string) string { return "/business/" + url.PathEscape(id) }
 func recordURL(src, id string) string {
@@ -73,6 +83,8 @@ var page = template.Must(template.New("page.html").Funcs(template.FuncMap{
 	"businessFeedURL": businessFeedURL,
 	"what":            func(w string) string { return whatLabels[w] },
 	"source":          source,
+	"sourceNote":      func(s string) string { return sourceNotes[s] },
+	"num":             num,
 	"succession":      newSuccession,
 	"day":             func(t time.Time) string { return t.Format("Jan 2, 2006") },
 	"year":            func(t time.Time) int { return t.Year() },
@@ -105,6 +117,7 @@ func Handler(st *store.Store, log *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /changes.atom", s.changesFeed)
 	mux.HandleFunc("GET /feed/place/{id...}", s.placeFeed)
 	mux.HandleFunc("GET /feed/business/{id...}", s.businessFeed)
+	mux.HandleFunc("GET /sources", s.sources)
 	mux.HandleFunc("GET /map.json", s.pins)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", forever(http.FileServerFS(static))))
 	mux.HandleFunc("GET /metrics", s.metrics)
@@ -128,7 +141,8 @@ type view struct {
 	Record    *store.RecordView
 	Page      string // "changes" or "sources"
 	Nights    []night
-	Truncated bool   // Nights hold only the newest maxPageChanges changes
+	Truncated bool // Nights hold only the newest maxPageChanges changes
+	Sources   []store.SourceHealth
 	Feed      string // the page's Atom feed, for autodiscovery
 	Status    int
 	Updated   time.Time // the newest successful ingest, for the front page
@@ -187,6 +201,15 @@ func (s *server) record(w http.ResponseWriter, r *http.Request) {
 	}
 	l := rv.Latest()
 	s.render(w, r, view{Title: cmp.Or(l.Name, l.Address, rv.RecordID) + " · " + source(src) + " · city-pulse", Record: rv})
+}
+
+func (s *server) sources(w http.ResponseWriter, r *http.Request) {
+	hs, err := s.st.Health(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, view{Title: "The sources · city-pulse", Page: "sources", Sources: hs})
 }
 
 // Pins are clustered into cells about clusterPx pixels wide below rawZoom,
@@ -348,4 +371,13 @@ func headers(h http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		h.ServeHTTP(w, r)
 	})
+}
+
+// num writes n with thousands separators: 1807596 -> "1,807,596".
+func num(n int) string {
+	s := strconv.Itoa(n)
+	for i := len(s) - 3; i > 0 && s[i-1] != '-'; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }

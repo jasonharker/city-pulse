@@ -94,6 +94,7 @@ func TestSite(t *testing.T) {
 		{"/feed/business/" + url.PathEscape("3570|S|LAS VEGAS|B/C#snhd:2"), 200, []string{"<updated>"}},
 		{"/feed/place/nowhere", 404, nil},
 		{"/feed/business/nowhere", 404, nil},
+		{"/sources", 200, []string{"Health inspection (SNHD)", "March 2017", "3 rows"}},
 		// The fixture's addresses have no coordinates, so no pins; see TestPins.
 		{"/map.json?z=12&s=36&w=-115.3&n=36.3&e=-115", 200, []string{"[]"}},
 		{"/map.json?z=12&s=36&w=-115.3&n=NaN&e=-115", 400, nil},

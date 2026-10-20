@@ -232,6 +232,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
 {{- else if .Business}}{{template "business" .Business}}
 {{- else if .Record}}{{template "record" .Record}}
 {{- else if eq .Page "changes"}}{{template "changes" .}}
+{{- else if eq .Page "sources"}}{{template "sources" .Sources}}
 {{- else if eq .Status 404}}<h1>Not found</h1><p class="muted">No place or business has that address. Try a search.</p>
 {{- else if eq .Status 500}}<h1>Something went wrong</h1><p class="muted">Please try again in a minute.</p>
 {{- else if .Searched}}{{template "results" .}}
@@ -256,7 +257,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
 <footer class="colophon">
   <div class="frame">
     <p>Built nightly from public records: Southern Nevada Health District inspections, Clark County and City of Las Vegas
-    business licenses, and City of Las Vegas building permits. Matching is automatic and can be wrong; each record is shown as published.</p>
+    business licenses, and City of Las Vegas building permits. Matching is automatic and can be wrong; each record is shown as published. <a href="/sources">About the sources</a>.</p>
     <p>Map data © OpenStreetMap contributors. Set in Newsreader and IBM Plex Mono. <a href="{{static "LICENSES.txt"}}">Licenses</a>.</p>
   </div>
 </footer>
@@ -419,6 +420,21 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
           {{- /**/}}<a href="{{recordURL .Source .RecordID}}">the record</a></p></div></li>
     {{- end}}
     </ol>
+  </section>
+  {{- end}}
+</section>
+{{end}}
+{{define "sources"}}
+<section class="results">
+  <h1>The sources</h1>
+  <p class="muted">city-pulse fetches each dataset whole every night. A record that changes gets a new version; one that disappears
+    is marked no longer published, never deleted.</p>
+  {{- range .}}
+  <section>
+    <h2>{{source .Source}}</h2>
+    <p>{{sourceNote .Source}}</p>
+    <p class="label">last updated {{with .LastSuccess}}{{day .}}{{else}}never{{end}}{{if not .OK}} · the latest run failed{{end}}
+      · {{num .Seen}} rows · {{num .New}} new versions in the latest run · {{num .ParseErrors}} unreadable</p>
   </section>
   {{- end}}
 </section>
