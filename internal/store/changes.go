@@ -40,16 +40,23 @@ const whatSQL = `CASE WHEN EXISTS (SELECT 1 FROM observations p
 // too, and skipping its million rows by date would scan them all.
 // Superseded versions have no link of their own, so each takes its place and
 // business from the record's current version.
+//
+// The LATERAL subquery with OFFSET 0 is an optimization fence. Without it, once
+// source_runs has statistics, Postgres flattens the join, hash-joins and
+// seq-scans every observation (about 1 s on production instead of 30 ms).
+// Tests on small tables cannot catch this.
 func (s *Store) Changes(ctx context.Context, since time.Time, limit int) ([]Change, error) {
 	return s.changes(ctx, bootSQL+`,
 		win AS (SELECT coalesce(max(id), 0) AS id FROM source_runs WHERE started_at <= $1)
 		SELECT `+whatSQL+`, v.first_seen, v.id, v.source, v.record_id, v.name, v.category, v.status, v.address,
 		       coalesce(c.place_id, ''), coalesce(c.business_id, '')
-		FROM observations v JOIN boot ON boot.source = v.source CROSS JOIN win
+		FROM boot CROSS JOIN win
+		CROSS JOIN LATERAL (SELECT * FROM observations v
+			WHERE v.source = boot.source AND v.first_run_id > greatest(boot.id, win.id) OFFSET 0) v
 		LEFT JOIN LATERAL (SELECT l.place_id, l.business_id FROM observations o JOIN links l ON l.observation_id = o.id
 			WHERE o.source = v.source AND o.record_id = v.record_id LIMIT 1) c ON true
-		WHERE v.first_run_id > greatest(boot.id, win.id)
 		UNION ALL
+		-- Deliberately mixed: versions are windowed by run, withdrawals by time.
 		SELECT 'withdrawn', o.withdrawn_at, o.id, o.source, o.record_id, o.name, o.category, o.status, o.address,
 		       coalesce(l.place_id, ''), coalesce(l.business_id, '')
 		FROM observations o JOIN links l ON l.observation_id = o.id
@@ -200,7 +207,7 @@ func text(v any, ok bool) string {
 	if s, isStr := v.(string); isStr {
 		return s
 	}
-	// Not json.Marshal: it writes & as &, and the page escapes on its own.
+	// Not json.Marshal: it writes & as \u0026, and the page escapes on its own.
 	var b strings.Builder
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
