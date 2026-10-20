@@ -54,7 +54,7 @@ func TestChangesAndRecordView(t *testing.T) {
 	}
 
 	if later, err := st.Changes(ctx, time.Now(), 100); err != nil || len(later) != 0 {
-		t.Errorf("Changes since now = %d, %v; want none (both runs started before)", len(later), err)
+		t.Errorf("Changes since now = %d, %v; want none (all runs started before)", len(later), err)
 	}
 
 	recent, err := st.Changes(ctx, mid, 100)

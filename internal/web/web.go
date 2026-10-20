@@ -204,7 +204,9 @@ func (s *server) record(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) sources(w http.ResponseWriter, r *http.Request) {
-	hs, err := s.st.Health(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	hs, err := s.st.Health(ctx)
 	if err != nil {
 		s.fail(w, r, err)
 		return

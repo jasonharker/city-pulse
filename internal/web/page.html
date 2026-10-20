@@ -434,7 +434,7 @@ footer.colophon { border-top: var(--rule-hair) solid var(--color-rule-2); paddin
     <h2>{{source .Source}}</h2>
     <p>{{sourceNote .Source}}</p>
     <p class="label">last updated {{with .LastSuccess}}{{day .}}{{else}}never{{end}}{{if not .OK}} · the latest run failed{{end}}
-      · {{num .Seen}} rows · {{num .New}} new versions in the latest run · {{num .ParseErrors}} unreadable</p>
+      · {{num .Seen}} rows · new versions in the latest run: {{num .New}} · unreadable: {{num .ParseErrors}}</p>
   </section>
   {{- end}}
 </section>
