@@ -8,53 +8,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/jasonharker/city-pulse/internal/address"
-)
-
-// Obs is the current version of one source record.
-type Obs struct {
-	ID          int64
-	Name        string
-	Address     string
-	BusinessKey string
-	Status      string
-	Lat, Lon    *float64
-	Date        time.Time  // start date, or when city-pulse first saw the record
-	End         *time.Time // end date if the source has one
-}
-
-// Place is one physical location. ID is its address key, stable across rebuilds.
-type Place struct {
-	ID       string
-	Address  string // the most common published spelling
-	Lat, Lon *float64
-}
-
-// Business is one operator at one place (or at no known place) over a span.
-// ID is the place ID plus the smallest business key among its records.
-type Business struct {
-	ID, PlaceID, Name string
-	First, Last       time.Time
-	Closed            bool
-}
-
-// Link ties an observation to its place and business, naming the rule that did it.
-type Link struct {
-	ObservationID            int64
-	PlaceID, PlaceRule       string
-	BusinessID, BusinessRule string
-}
-
-// Place rules, most to least certain.
-const (
-	RuleExact  = "exact"  // the address key as published
-	RuleDir    = "dir"    // direction filled in: the only one seen at that number and street
-	RuleNear   = "near"   // unparseable address, nearest place by coordinates
-	RuleKey    = "key"    // business: shares a source business key
-	RuleName   = "name"   // business: same name at the same place, ignoring spacing and word order
-	RulePrefix = "prefix" // business: its name extends another's at the same place
+	"github.com/jasonharker/city-pulse/internal/model"
 )
 
 // minPrefix is the shortest name (letters and digits) that absorbs longer ones,
@@ -63,9 +19,9 @@ const minPrefix = 5
 
 // Result is a full resolve.
 type Result struct {
-	Places     []Place
-	Businesses []Business
-	Links      []Link
+	Places     []model.Place
+	Businesses []model.Business
+	Links      []model.Link
 }
 
 // nearMeters is how far an unparseable record may be from the place it joins.
@@ -76,7 +32,7 @@ var closed = map[string]bool{"closed": true, "inactive": true, "out of business"
 	"revoked": true, "cancelled": true, "expired": true}
 
 // Build resolves obs.
-func Build(obs []Obs) Result {
+func Build(obs []model.Obs) Result {
 	n := len(obs)
 	addrs := make([]address.Address, n)
 	parsed := make([]bool, n)
@@ -100,9 +56,9 @@ func Build(obs []Obs) Result {
 		if !parsed[i] {
 			continue
 		}
-		placeRule[i] = RuleExact
+		placeRule[i] = model.RuleExact
 		if d := dirsAt[addrs[i].Number+"|"+addrs[i].Street]; addrs[i].Dir == "" && len(d) == 1 {
-			addrs[i].Dir, placeRule[i] = only(d), RuleDir
+			addrs[i].Dir, placeRule[i] = only(d), model.RuleDir
 		}
 		placeOf[i] = addrs[i].Key()
 	}
@@ -112,21 +68,21 @@ func Build(obs []Obs) Result {
 	for i, o := range obs {
 		if placeOf[i] == "" && o.Lat != nil {
 			if id := near.nearest(*o.Lat, *o.Lon); id != "" {
-				placeOf[i], placeRule[i] = id, RuleNear
+				placeOf[i], placeRule[i] = id, model.RuleNear
 			}
 		}
 	}
 
 	bizOf, bizRule, businesses := buildBusinesses(obs, placeOf)
-	links := make([]Link, n)
+	links := make([]model.Link, n)
 	for i, o := range obs {
-		links[i] = Link{ObservationID: o.ID, PlaceID: placeOf[i], PlaceRule: placeRule[i],
+		links[i] = model.Link{ObservationID: o.ID, PlaceID: placeOf[i], PlaceRule: placeRule[i],
 			BusinessID: bizOf[i], BusinessRule: bizRule[i]}
 	}
 	return Result{Places: places, Businesses: businesses, Links: links}
 }
 
-func buildPlaces(obs []Obs, placeOf []string) []Place {
+func buildPlaces(obs []model.Obs, placeOf []string) []model.Place {
 	spellings := map[string]map[string]int{}
 	type sum struct {
 		lat, lon float64
@@ -147,16 +103,16 @@ func buildPlaces(obs []Obs, placeOf []string) []Place {
 			c.lat, c.lon, c.k = c.lat+*obs[i].Lat, c.lon+*obs[i].Lon, c.k+1
 		}
 	}
-	places := make([]Place, 0, len(spellings))
+	places := make([]model.Place, 0, len(spellings))
 	for id, sp := range spellings {
-		p := Place{ID: id, Address: mostCommon(sp)}
+		p := model.Place{ID: id, Address: mostCommon(sp)}
 		if c := coords[id]; c.k > 0 {
 			lat, lon := c.lat/float64(c.k), c.lon/float64(c.k)
 			p.Lat, p.Lon = &lat, &lon
 		}
 		places = append(places, p)
 	}
-	slices.SortFunc(places, func(a, b Place) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(places, func(a, b model.Place) int { return cmp.Compare(a.ID, b.ID) })
 	return places
 }
 
@@ -166,7 +122,7 @@ func buildPlaces(obs []Obs, placeOf []string) []Place {
 // "RAFAELA BOTANICA"); or when one name is a whole-word prefix of the other
 // ("SUBWAY" / "SUBWAY #27601"; SNHD permits each station of one restaurant).
 // Records with no place cluster by business key alone.
-func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out []Business) {
+func buildBusinesses(obs []model.Obs, placeOf []string) (bizOf, bizRule []string, out []model.Business) {
 	n := len(obs)
 	bizOf, bizRule = make([]string, n), make([]string, n)
 	uf := newUnionFind(n)
@@ -195,8 +151,8 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 			continue
 		}
 		toks := strings.Fields(nm)
-		join(placeOf[i]+"|name|"+strings.Join(toks, ""), i, RuleName)
-		join(placeOf[i]+"|words|"+wordsKey(toks), i, RuleName)
+		join(placeOf[i]+"|name|"+strings.Join(toks, ""), i, model.RuleName)
+		join(placeOf[i]+"|words|"+wordsKey(toks), i, model.RuleName)
 		namesAt[placeOf[i]] = append(namesAt[placeOf[i]], named{nm, i})
 	}
 	// In sorted order every name that extends "subway " follows "subway" directly.
@@ -208,7 +164,7 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 			}
 			for b := a + 1; b < len(ns) && strings.HasPrefix(ns[b].name, ns[a].name+" "); b++ {
 				if uf.union(ns[b].i, ns[a].i) {
-					bizRule[ns[b].i] = RulePrefix
+					bizRule[ns[b].i] = model.RulePrefix
 				}
 			}
 		}
@@ -225,7 +181,7 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 		place := placeOf[ms[0]]
 		names := map[string]int{}
 		keys := []string{}
-		b := Business{PlaceID: place, Closed: true}
+		b := model.Business{PlaceID: place, Closed: true}
 		for _, i := range ms {
 			o := obs[i]
 			names[o.Name]++
@@ -255,11 +211,11 @@ func buildBusinesses(obs []Obs, placeOf []string) (bizOf, bizRule []string, out 
 		for _, i := range ms {
 			bizOf[i] = b.ID
 			if bizRule[i] == "" {
-				bizRule[i] = RuleKey
+				bizRule[i] = model.RuleKey
 			}
 		}
 	}
-	slices.SortFunc(out, func(a, b Business) int { return cmp.Compare(a.ID, b.ID) })
+	slices.SortFunc(out, func(a, b model.Business) int { return cmp.Compare(a.ID, b.ID) })
 	return bizOf, bizRule, out
 }
 
@@ -343,11 +299,11 @@ func (u unionFind) union(i, j int) bool {
 
 // grid finds the nearest place within nearMeters. Cells are ~110 m tall.
 // ponytail: equirectangular distance, fine at city scale.
-type grid map[[2]int][]Place
+type grid map[[2]int][]model.Place
 
 const cell = 0.001
 
-func newGrid(places []Place) grid {
+func newGrid(places []model.Place) grid {
 	g := grid{}
 	for _, p := range places {
 		if p.Lat != nil {

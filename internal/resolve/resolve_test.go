@@ -3,12 +3,14 @@ package resolve
 import (
 	"testing"
 	"time"
+
+	"github.com/jasonharker/city-pulse/internal/model"
 )
 
 func TestBuild(t *testing.T) {
 	ll := func(v float64) *float64 { return &v }
 	y := func(year int) time.Time { return time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC) }
-	obs := []Obs{
+	obs := []model.Obs{
 		// One storefront: a bar seen by two agencies, then a taco place.
 		{ID: 1, Name: "JOE'S BAR", Address: "3570 S LAS VEGAS BLVD STE 100", BusinessKey: "snhd:1", Date: y(2018), Lat: ll(36.1), Lon: ll(-115.17)},
 		{ID: 2, Name: "Joes Bar LLC", Address: "3570 Las Vegas Blvd South Suite 100", BusinessKey: "clv:9", Status: "Closed", Date: y(2019)},
@@ -31,20 +33,23 @@ func TestBuild(t *testing.T) {
 	r := Build(obs)
 
 	bar := "3570|S|LAS VEGAS|100"
-	want := map[int64]Link{
-		1:  {1, bar, RuleExact, bar + "#clv:9", RuleKey},
-		2:  {2, bar, RuleExact, bar + "#clv:9", RuleName},
-		3:  {3, bar, RuleExact, bar + "#snhd:2", RuleKey},
-		4:  {4, bar, RuleExact, bar + "#snhd:2", RuleKey},
-		5:  {5, "3570|S|LAS VEGAS|200", RuleExact, "3570|S|LAS VEGAS|200#snhd:3", RuleKey},
-		6:  {6, "3570|S|LAS VEGAS|200", RuleDir, "", ""},
-		7:  {7, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleKey},
-		8:  {8, "500|W|OAK|", RuleExact, "", ""},
-		9:  {9, bar, RuleNear, bar + "#snhd:4", RuleKey},
-		10: {10, "", "", "#clv:5", RuleKey},
-		11: {11, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RulePrefix},
-		12: {12, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleName},
-		13: {13, "500|W|OAK|7", RuleExact, "500|W|OAK|7#cc:4", RuleName},
+	lk := func(id int64, place, placeRule, biz, bizRule string) model.Link {
+		return model.Link{ObservationID: id, PlaceID: place, PlaceRule: placeRule, BusinessID: biz, BusinessRule: bizRule}
+	}
+	want := map[int64]model.Link{
+		1:  lk(1, bar, model.RuleExact, bar+"#clv:9", model.RuleKey),
+		2:  lk(2, bar, model.RuleExact, bar+"#clv:9", model.RuleName),
+		3:  lk(3, bar, model.RuleExact, bar+"#snhd:2", model.RuleKey),
+		4:  lk(4, bar, model.RuleExact, bar+"#snhd:2", model.RuleKey),
+		5:  lk(5, "3570|S|LAS VEGAS|200", model.RuleExact, "3570|S|LAS VEGAS|200#snhd:3", model.RuleKey),
+		6:  lk(6, "3570|S|LAS VEGAS|200", model.RuleDir, "", ""),
+		7:  lk(7, "500|W|OAK|7", model.RuleExact, "500|W|OAK|7#cc:4", model.RuleKey),
+		8:  lk(8, "500|W|OAK|", model.RuleExact, "", ""),
+		9:  lk(9, bar, model.RuleNear, bar+"#snhd:4", model.RuleKey),
+		10: lk(10, "", "", "#clv:5", model.RuleKey),
+		11: lk(11, "500|W|OAK|7", model.RuleExact, "500|W|OAK|7#cc:4", model.RulePrefix),
+		12: lk(12, "500|W|OAK|7", model.RuleExact, "500|W|OAK|7#cc:4", model.RuleName),
+		13: lk(13, "500|W|OAK|7", model.RuleExact, "500|W|OAK|7#cc:4", model.RuleName),
 	}
 	for _, l := range r.Links {
 		if l != want[l.ObservationID] {
