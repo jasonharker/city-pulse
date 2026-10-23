@@ -67,7 +67,12 @@ internal/source/          Source interface + registry
   ccbiz/                  Clark County business licenses
 internal/ingest/          runs sources, batches upserts, records runs and errors
 internal/address/         parse + normalize street addresses
-internal/resolve/         blocking, name matching, clustering, business spans
+internal/model/           domain types: observations, places, businesses, links, rules
+internal/resolve/         the pipeline: an ordered list of stages over one graph
+  graph/                  run state, the Stage interface, business edges
+  place/                  exact, dir, places, near
+  business/               key, name, prefix (edges only)
+  cluster/                applies edges; business names, spans and IDs
 internal/store/           Postgres via pgx, embedded SQL migrations
 internal/web/             HTTP server, html/template, search, place/business pages
 ```
@@ -76,6 +81,7 @@ internal/web/             HTTP server, html/template, search, place/business pag
 - `Source`: `Name() string`, `Fetch(ctx, emit func(Record) error) error` (full snapshot), `Parse(Record) (Observation, error)`.
 - `address.Normalize(string) (Address, error)` — pure, no I/O.
 - `resolve` reads observations, writes places/businesses/links; shares nothing with `web` except the store.
+- `graph.Stage`: `Name() string`, `Apply(*graph.Graph)`. Place stages set each record's place and rule; business stages only add edges (A, B, rule); clustering alone merges.
 
 **Decisions**
 - Hand-written address parser, not libpostal (avoids cgo and a ~2 GB model; Vegas addresses are regular; better exercise; easier to debug).
@@ -97,6 +103,8 @@ Input is the **current version** of every source record: the one from the latest
 1. **Normalize** — address key `number|dir|street|unit`, street type left out because agencies omit it as often as they publish it. Name: lowercase, strip legal suffixes (LLC, INC, CORP, …) and SNHD's `- DELETED`, a `dba` name wins, `&` → `and`, drop punctuation.
 2. **Places** — group observations by address key. A missing direction is filled when exactly one is seen at that number and street. A missing unit is never guessed: a unit-less record belongs to the whole building, whose units share its key as a prefix (measured: guessing pulled whole buildings into junk units). Unparseable address with coordinates → nearest place within 60 m.
 3. **Businesses** — within a place, union-find over: a shared source business key; names equal ignoring spacing or word order (`SPORTSBAR`/`SPORTS BAR`, 156 such pairs); one name a whole-word prefix of another, shorter name ≥ 5 characters (`SUBWAY`/`SUBWAY #27601`, SNHD's per-station permits; ~4,100 pairs). Records with no address cluster by business key alone. Each business spans its first to last observation; it is closed when every record carries a closed status or an end date.
+The steps run as stages in order (`resolve.Default`): `exact`, `dir`, `places` (collect), `near`, `key`, `name`, `prefix`, `cluster`. `dir` reads the exact placements' IDs rather than re-parsing, so a run holds no parsed addresses; peak heap on a full local ingest (998,984 records) is ~700 MB, below the single-function resolver it replaced (~760 MB). Clustering applies edges in the order stages added them: a record's business rule is the rule of the last edge that merged it into a larger cluster.
+
 4. **Write** — `TRUNCATE` and `COPY` `places`, `businesses`, `links` in one transaction. The site never sees a partial state. IDs are derived from content (place ID = address key; business ID = place ID + smallest business key), so URLs survive rebuilds.
 
 A full rebuild takes about a minute at ~1M current records. Incremental resolution is the upgrade path if it stops being enough; not built until needed. PostGIS is not needed for resolve (the 60 m lookup is an in-memory grid); it arrives with serve if the map needs it.
