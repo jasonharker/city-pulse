@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jasonharker/city-pulse/internal/model"
+	"github.com/jasonharker/city-pulse/internal/resolve/graph"
 )
 
 func TestBuild(t *testing.T) {
@@ -73,17 +74,23 @@ func TestBuild(t *testing.T) {
 	}
 }
 
-func TestNormName(t *testing.T) {
-	for in, want := range map[string]string{
-		"JOE'S BAR & GRILL, LLC":          "joes bar and grill",
-		"SMITH HOLDINGS INC DBA JOES BAR": "joes bar",
-		"The Venetian Resort":             "venetian resort",
-		"THE":                             "the",
-		"BACON BAR PUB - DELETED":         "bacon bar pub",
-		"GIANNA’S PIZZA":                  "giannas pizza",
-	} {
-		if got := NormName(in); got != want {
-			t.Errorf("NormName(%q) = %q, want %q", in, got, want)
+func TestRunWithoutStage(t *testing.T) {
+	// Without dir, a permit missing its direction stays at its own address key.
+	obs := []model.Obs{
+		{ID: 1, Name: "VAPE CITY", Address: "3570 S LAS VEGAS BLVD STE 200", BusinessKey: "snhd:3"},
+		{ID: 2, Address: "3570 LAS VEGAS BLVD STE 200"},
+	}
+	var stages []graph.Stage
+	for _, s := range Default() {
+		if s.Name() != model.RuleDir {
+			stages = append(stages, s)
 		}
+	}
+	r := Run(obs, stages)
+	if l := r.Links[1]; l.PlaceID != "3570||LAS VEGAS|200" || l.PlaceRule != model.RuleExact {
+		t.Errorf("link 2 = %+v; want its own key, exact", l)
+	}
+	if got := len(r.Stages); got != len(Default())-1 {
+		t.Errorf("%d stage runs, want %d", got, len(Default())-1)
 	}
 }
