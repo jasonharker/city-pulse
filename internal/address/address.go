@@ -60,7 +60,7 @@ var (
 	digits   = regexp.MustCompile(`^\d+$`)
 	ordinal  = regexp.MustCompile(`^\d+(ST|ND|RD|TH)$`)
 	hasDigit = regexp.MustCompile(`\d`)
-	punct    = strings.NewReplacer(".", " ", ",", " ", "#", " # ")
+	punct    = strings.NewReplacer(".", " ", ",", " ", "#", " # ", "|", " ") // "|" separates Key parts
 )
 
 // Normalize parses s. It is pure and never does I/O.

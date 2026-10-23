@@ -37,6 +37,8 @@ func TestNormalize(t *testing.T) {
 		{"5000 CAMINO DEL RANCHO None", "5000||CAMINO DEL RANCHO|", ""},
 		{"3570 LAS VEGAS BLVD SOUTH", "3570|S|LAS VEGAS|", "BLVD"},
 		{"3545 Las Vegas S Blvd Ste L24-3545", "3545|S|LAS VEGAS|L24-3545", "BLVD"},
+		// Not from the corpus: "|" separates Key's parts, so it never survives into one.
+		{"123 MAIN|ST STE 4|5", "123||MAIN|45", "ST"},
 	} {
 		a, err := Normalize(c.in)
 		if err != nil || a.Key() != c.key || a.Type != c.typ {
