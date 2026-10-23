@@ -14,10 +14,6 @@ type Obs struct {
 	Lat, Lon    *float64
 	Date        time.Time  // start date, or when city-pulse first saw the record
 	End         *time.Time // end date if the source has one
-	Parcel      string     // Clark County APN, digits only, or ""
-	Zip         string     // 5 digits or ""
-	City        string
-	Owners      []string // owners and officers; City of Las Vegas licenses only
 }
 
 // Place is one physical location. ID is its address key, stable across rebuilds.

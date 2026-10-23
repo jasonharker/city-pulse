@@ -23,8 +23,7 @@ func (s *Store) CurrentObservations(ctx context.Context) ([]model.Obs, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT ON (source, record_id)
 		       id, name, address, business_key, status, lat, lon,
-		       coalesce(start_date, first_seen::date), end_date, parcel, zip, city,
-		       payload->'owners'
+		       coalesce(start_date, first_seen::date), end_date
 		FROM observations
 		ORDER BY source, record_id, first_run_id DESC, `+statusRankSQL+` DESC, id DESC`)
 	if err != nil {
@@ -32,8 +31,7 @@ func (s *Store) CurrentObservations(ctx context.Context) ([]model.Obs, error) {
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (model.Obs, error) {
 		var o model.Obs
-		err := r.Scan(&o.ID, &o.Name, &o.Address, &o.BusinessKey, &o.Status, &o.Lat, &o.Lon, &o.Date, &o.End,
-			&o.Parcel, &o.Zip, &o.City, &o.Owners)
+		err := r.Scan(&o.ID, &o.Name, &o.Address, &o.BusinessKey, &o.Status, &o.Lat, &o.Lon, &o.Date, &o.End)
 		return o, err
 	})
 }

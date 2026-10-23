@@ -2,7 +2,6 @@ package store_test
 
 import (
 	"context"
-	"slices"
 	"testing"
 
 	"github.com/jasonharker/city-pulse/internal/model"
@@ -23,8 +22,8 @@ func TestCurrentObservationsAndReplace(t *testing.T) {
 	p2.Status = "Closed"
 	l1 := obs(t, "L", map[string]any{"v": 1})
 	run(t, st, []source.Observation{p2, p1, l1}) // Closed first: id order must not decide
-	l2 := obs(t, "L", map[string]any{"v": 2, "owners": []string{"ANN SMITH", "BOB JONES"}})
-	l2.Name, l2.Parcel, l2.Zip, l2.City = "Joe's Bar", "16209101001", "89109", "Las Vegas"
+	l2 := obs(t, "L", map[string]any{"v": 2})
+	l2.Name = "Joe's Bar"
 	run(t, st, []source.Observation{p1, p2, l2})
 
 	cur, err := st.CurrentObservations(ctx)
@@ -37,12 +36,6 @@ func TestCurrentObservationsAndReplace(t *testing.T) {
 	}
 	if len(cur) != 2 || !got["Joe's/Closed"] || !got["Joe's Bar/"] {
 		t.Fatalf("current = %+v; want the Closed permit snapshot and run 2's license", cur)
-	}
-	for _, o := range cur {
-		if o.Name == "Joe's Bar" && (o.Parcel != "16209101001" || o.Zip != "89109" || o.City != "Las Vegas" ||
-			!slices.Equal(o.Owners, []string{"ANN SMITH", "BOB JONES"})) {
-			t.Errorf("license = %+v; want its parcel, zip, city and owners", o)
-		}
 	}
 
 	// Replacing twice leaves only the second result.
