@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/jasonharker/city-pulse/internal/model"
 	"github.com/jasonharker/city-pulse/internal/resolve"
 	"github.com/jasonharker/city-pulse/internal/source"
 	"github.com/jasonharker/city-pulse/internal/store"
@@ -56,7 +57,7 @@ func TestPins(t *testing.T) {
 	st, _ := storetest.New(t)
 	ctx := context.Background()
 	f := func(v float64) *float64 { return &v }
-	err := st.ReplaceResolved(ctx, resolve.Result{Places: []resolve.Place{
+	err := st.ReplaceResolved(ctx, resolve.Result{Places: []model.Place{
 		{ID: "1|N|MAIN|", Address: "1 N Main St", Lat: f(36.10), Lon: f(-115.10)},
 		{ID: "1|N|MAIN|A", Address: "1 N Main St A", Lat: f(36.1001), Lon: f(-115.1001)}, // a unit shares its building's pin
 		{ID: "1|N|MAIN|B", Address: "1 N Main St B"},

@@ -5,6 +5,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/jasonharker/city-pulse/internal/model"
 	"github.com/jasonharker/city-pulse/internal/resolve"
 )
 
@@ -18,7 +19,7 @@ const statusRankSQL = `CASE WHEN status IN ('Closed', 'Expired', 'Cancelled', 'W
 // the one from the latest run, and among versions first seen in the same run
 // (the permit archive publishes several lifecycle snapshots at once) the most
 // advanced status.
-func (s *Store) CurrentObservations(ctx context.Context) ([]resolve.Obs, error) {
+func (s *Store) CurrentObservations(ctx context.Context) ([]model.Obs, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT DISTINCT ON (source, record_id)
 		       id, name, address, business_key, status, lat, lon,
@@ -28,8 +29,8 @@ func (s *Store) CurrentObservations(ctx context.Context) ([]resolve.Obs, error) 
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (resolve.Obs, error) {
-		var o resolve.Obs
+	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (model.Obs, error) {
+		var o model.Obs
 		err := r.Scan(&o.ID, &o.Name, &o.Address, &o.BusinessKey, &o.Status, &o.Lat, &o.Lon, &o.Date, &o.End)
 		return o, err
 	})

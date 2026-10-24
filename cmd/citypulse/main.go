@@ -132,6 +132,9 @@ func runResolve(ctx context.Context, st *store.Store, log *slog.Logger) error {
 		return fmt.Errorf("resolve: load: %w", err)
 	}
 	r := resolve.Build(obs)
+	for _, s := range r.Stages {
+		log.Info("resolve stage", "stage", s.Name, "took", s.Took.Round(time.Millisecond))
+	}
 	if err := st.ReplaceResolved(ctx, r); err != nil {
 		return fmt.Errorf("resolve: write: %w", err)
 	}

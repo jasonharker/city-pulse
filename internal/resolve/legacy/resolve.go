@@ -1,6 +1,6 @@
-// Package resolve derives places and businesses from observations. It is pure:
-// the same observations always produce the same result, with stable IDs.
-package resolve
+// Package legacy is a frozen copy of resolve as of plan 6, phase 0 (main 71ab611).
+// The golden test compares the pipeline against it; delete it when phase 2 lands.
+package legacy
 
 import (
 	"cmp"
