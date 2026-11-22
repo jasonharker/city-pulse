@@ -13,7 +13,7 @@ metadata:
   labels:
     jenkins: agent
 spec:
-  serviceAccountName: jenkins
+  serviceAccountName: jenkins-agent
   containers:
   - name: golang
     image: golang:1.27.2-alpine3.24
